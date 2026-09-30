@@ -25,3 +25,14 @@ def test_candidates_have_valid_scores():
     candidates = similarity_candidates(docs, threshold=0.7)
 
     assert all(0.7 <= item.score <= 1.0 for item in candidates)
+
+
+
+def test_candidate_matrix_contains_requested_thresholds():
+    from epistemic.candidate_detection import candidate_matrix
+
+    docs = {item.id: item.text for item in build_ep001_dataset()}
+    matrix = candidate_matrix(docs, thresholds=(0.5, 0.7, 0.9))
+
+    assert set(matrix) == {0.5, 0.7, 0.9}
+    assert all(item.score >= threshold for threshold, items in matrix.items() for item in items)
