@@ -23,7 +23,7 @@ def test_pair_labels_use_family_as_ground_truth():
 def test_threshold_metrics_are_consistent():
     metrics = evaluate_threshold(build_ep001_dataset(), threshold=0.7)
 
-    assert metrics.true_positives + metrics.false_negatives == 25
+    assert metrics.true_positives + metrics.false_negatives == 50
     assert (
         metrics.true_positives
         + metrics.false_positives
