@@ -1,54 +1,42 @@
-# epistemic-layer
+# Epistemic Layer
 
-An open-source epistemic control layer for AI agents.
+An open-source research project for an epistemic control layer for AI agents.
 
-## EP-001: Evidence Independence
+## Current research question
 
-The first experiment asks a narrow question:
+Can an agent distinguish genuinely independent evidence from evidence that only appears independent?
 
-> Can an AI system distinguish many pieces of evidence from many **independent evidence lineages**?
+EP-001 is deliberately narrow. It is not a production provenance detector and it makes no claim that lexical similarity proves common origin.
 
-The current prototype contains:
+### EP-001 baseline
 
-- a minimal Claim/Evidence data model;
-- explicit provenance through `derived_from`;
-- deterministic lineage-family grouping;
-- a transparent unigram similarity baseline;
-- a deterministic 25-document benchmark corpus;
-- automated tests and GitHub Actions.
+The benchmark contains 25 deterministic documents across five topics:
 
-### Benchmark design
+- original
+- exact copy
+- lightly edited derivative
+- compressed summary
+- genuinely independent report
 
-Each topic has five documents:
+The current implementation has two separate signals:
 
-1. original source;
-2. exact copy;
-3. lightly edited derivative;
-4. compressed summary;
-5. independent report.
+1. Explicit lineage: when derived_from is available, evidence can be grouped deterministically.
+2. Similarity triage: high lexical overlap is surfaced for provenance review when lineage is missing.
 
-The benchmark's family labels are **ground truth for evaluation only**. They are not presented to the provenance algorithm.
+The second signal is intentionally weak. A summary can preserve the underlying fact while sharing few words with its source, so lexical similarity alone cannot establish independence.
 
-### What this does not claim
+### Validation rule
 
-This baseline does **not** prove provenance from text similarity. Similarity can identify candidates for further investigation, but it cannot establish that one document caused another.
+We will not claim success because a test passes. The next experiment must measure where the baseline fails, especially:
 
-The research question is therefore:
+- hidden paraphrases
+- summaries with low lexical overlap
+- AI-generated rewrites
+- source chains with missing provenance
+- genuinely independent reports about the same event
 
-`Can observable evidence attributes and similarity signals recover hidden provenance well enough to reduce false evidence counts?`
-
-A later benchmark will add paraphrases, AI-generated transformations, citation chains, conflicting claims, and intentionally ambiguous cases.
-
-## Development
-
-Python 3.11+.
-
-Run:
-
-```bash
-python -m pytest
-```
+If the system cannot separate these cases with stronger evidence, we will document the failure rather than rename the problem.
 
 ## Status
 
-Research prototype — not production software.
+EP-001 is an experiment, not a product.
