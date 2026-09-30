@@ -1,10 +1,12 @@
+from math import isclose
+
 from epistemic.similarity import cosine_similarity, jaccard_similarity
 
 
 def test_exact_copy_is_identical():
     text = "The vessel completed the survey in calm weather."
     assert jaccard_similarity(text, text) == 1.0
-    assert cosine_similarity(text, text) == 1.0
+    assert isclose(cosine_similarity(text, text), 1.0, rel_tol=1e-12)
 
 
 def test_unrelated_text_has_low_overlap():
