@@ -12,3 +12,16 @@ def test_ep001_has_expected_shape():
         "summary",
         "independent",
     }
+
+
+def test_each_topic_has_one_of_each_relation():
+    dataset = build_ep001_dataset()
+    for topic in ("t01", "t02", "t03", "t04", "t05"):
+        rows = [item for item in dataset if item.id.startswith(topic)]
+        assert {item.relation for item in rows} == {
+            "original",
+            "exact_copy",
+            "light_edit",
+            "summary",
+            "independent",
+        }
