@@ -10,24 +10,40 @@ EP-001 is deliberately narrow. It is not a production provenance detector and it
 
 ### EP-001 baseline
 
-The benchmark contains 25 deterministic documents across five topics:
+The benchmark contains 30 deterministic documents across five topics:
 
 - original
 - exact copy
 - lightly edited derivative
 - compressed summary
-- genuinely independent report
+- AI-generated rewrite
+- independent report about the same event
 
 The current implementation has two separate signals:
 
-1. Explicit lineage: when derived_from is available, evidence can be grouped deterministically.
+1. Explicit lineage: when `derived_from` is available, evidence can be grouped deterministically.
 2. Similarity triage: high lexical overlap is surfaced for provenance review when lineage is missing.
 
-The second signal is intentionally weak. A summary can preserve the underlying fact while sharing few words with its source, so lexical similarity alone cannot establish independence.
+The second signal is intentionally weak. A summary or AI rewrite can preserve the underlying fact while sharing few words with its source, so lexical similarity alone cannot establish independence.
+
+### Evaluation
+
+EP-001 now evaluates the lexical baseline against hidden ground-truth family labels. A pair is considered the same lineage only when both documents belong to the same benchmark family. Independent reports are therefore hard negatives: they describe the same event but must not be treated as evidence derived from the original.
+
+The evaluation reports:
+
+- true positives
+- false positives
+- false negatives
+- true negatives
+- precision
+- recall
+
+These labels are evaluation-only and must never be exposed to the detector as provenance metadata.
 
 ### Validation rule
 
-We will not claim success because a test passes. The next experiment must measure where the baseline fails, especially:
+We will not claim success because a test passes. The experiment must measure where the baseline fails, especially:
 
 - hidden paraphrases
 - summaries with low lexical overlap
