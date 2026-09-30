@@ -82,9 +82,9 @@ def rewrite_text(topic_id: str) -> str:
 
 def independent_text(topic_id: str) -> str:
     return {
-        "t01": "Independent observation recorded calm conditions at a coastal monitoring station.",
-        "t02": "A separate expedition reported sediment measurements from a different marine sector.",
-        "t03": "Visitors attended a public lecture about maritime archaeology during the same month.",
-        "t04": "Maintenance logs from another plant describe a compressor inspection.",
-        "t05": "A separate engineering team published results from an unmanned surface vehicle trial.",
+        "t01": "A separate coastal authority reported that weather-monitoring equipment was operating on the third pier.",
+        "t02": "An independent marine survey team reported that its research vessel had completed work on the northern reef.",
+        "t03": "A separate museum bulletin stated that a temporary exhibition about ancient navigation had opened to visitors.",
+        "t04": "A separate maintenance contractor reported that the factory had replaced an aging hydraulic pump during planned service.",
+        "t05": "An independent university bulletin announced the opening of a marine laboratory focused on autonomous systems.",
     }[topic_id]
