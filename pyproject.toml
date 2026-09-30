@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epistemic-layer"
+version = "0.1.0"
+description = "Experimental epistemic control primitives for AI agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Epistemic Labs" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
