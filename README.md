@@ -8,18 +8,36 @@ The first experiment asks a narrow question:
 
 > Can an AI system distinguish many pieces of evidence from many **independent evidence lineages**?
 
-The repository currently contains a deliberately small deterministic baseline:
+The current prototype contains:
 
-- an evidence data model;
+- a minimal Claim/Evidence data model;
 - explicit provenance through `derived_from`;
-- lineage-family grouping;
-- tests for copies/summaries versus independent sources.
+- deterministic lineage-family grouping;
+- a transparent unigram similarity baseline;
+- a deterministic 25-document benchmark corpus;
+- automated tests and GitHub Actions.
 
-### What this does **not** claim yet
+### Benchmark design
 
-This baseline does **not** infer independence from text similarity, authorship, web provenance, or semantic analysis. Those are later research questions.
+Each topic has five documents:
 
-The goal of EP-001 is to establish a reproducible test harness before adding more sophisticated inference.
+1. original source;
+2. exact copy;
+3. lightly edited derivative;
+4. compressed summary;
+5. independent report.
+
+The benchmark's family labels are **ground truth for evaluation only**. They are not presented to the provenance algorithm.
+
+### What this does not claim
+
+This baseline does **not** prove provenance from text similarity. Similarity can identify candidates for further investigation, but it cannot establish that one document caused another.
+
+The research question is therefore:
+
+`Can observable evidence attributes and similarity signals recover hidden provenance well enough to reduce false evidence counts?`
+
+A later benchmark will add paraphrases, AI-generated transformations, citation chains, conflicting claims, and intentionally ambiguous cases.
 
 ## Development
 
