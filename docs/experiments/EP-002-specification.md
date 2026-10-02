@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Status | **DRAFT — under review. No implementation until explicitly approved.** |
-| Version | 0.1 (2026-10-02) |
+| Version | 0.2 (2026-10-02) — revised after review of PR #2 (see Changelog at the end) |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -85,6 +85,8 @@ Similarity ≠ derivation ≠ independence:
 
 **Definition used in EP-002.** A pair (A, B) is *dependent* if the generation log (§4.3) records that the text of A was an input, directly or through a chain, to the production of B (or vice versa). Otherwise it is *independent*. Sharing facts about the same event does **not** create dependence.
 
+**Ground truth is not detector input (explicit rule).** The information-flow graph (§4.3) is known to the benchmark and is used **only** to score methods. The relation must be inferred **exclusively from the document texts**. A generation process that knows A → B does not prove that an outside observer can infer it from A and B; that inference is precisely what is being tested. Consequently, detectors receive **nothing but the text** of the two documents (§5, check C9): no metadata, no generator model, no class label, no provenance, no filename or ID that encodes any of these.
+
 **Out of scope for EP-002 (declared limitation).** Direction of derivation (who copied whom) and full genealogy (A→B→C vs A→B and A→C) are often not identifiable from text alone. EP-002 measures **pairwise dependent / independent** only.
 
 ---
@@ -102,7 +104,7 @@ If a single author (human or one LLM) writes both the original and the "independ
 5. **Generator diversity.** Documents are written by **several different models**, including the independent ones, so that "written by an LLM" or "written by model X" does not predict the label. The model used for each document is recorded.
 
 ### 4.3 Ground truth
-The ground truth is the **information-flow graph** recorded at generation time: for every document, the list of documents whose text was given as input. Dependence is the transitive closure of this graph.
+The ground truth is the **information-flow graph** recorded at generation time: for every document, the list of documents whose text was given as input. Dependence is the transitive closure of this graph. This graph is **evaluation-only**: it is stored apart from the texts and is never visible to any method (§3, C9).
 
 A pair is **excluded from evaluation** (and the exclusion is logged and counted) if:
 - generation failed, refused, or produced off-topic / wrong-language output;
@@ -123,14 +125,22 @@ If more than 10% of an event's documents are excluded, the whole event is exclud
 | F | Composition | new text from ORIG + another document's text | dependent on both |
 | G | Chain | rewrite of D (ORIG → D → G) | dependent on ORIG and D |
 | H | Independent, same event | reporter with its own observation set (shared core, different unique details) | independent |
-| I | Independent, similar wording | reporter with an observation set nearly identical to ORIG's, instructed to write in the same register | independent (**hard negative**) |
-| J | Dependent, low lexical similarity | not generated separately: the stratum of dependent pairs from C–G whose Jaccard is **below the median Jaccard of the H pairs** | dependent (**hard positive**) |
+| I1 | Independent, similar wording | reporter with an observation set nearly identical to ORIG's, instructed to write in the same register | independent (**hard negative**) |
+| I2 | Independent, same facts, different wording | reporter given the same core facts as ORIG, instructed to use a different register and sentence structure | independent (**hard negative**) |
+| I3 | Independent, same facts and same factual structure | reporter given the same core facts **in the same order/organisation** as ORIG (e.g. the same fact sequence), with wording unconstrained | independent (**hard negative**) |
 
 Plus ORIG itself (the root) per event.
 
-### 4.5 Size (proposal, open for review)
-- 40 events: **20 development, 20 test**, split **by event** (no event contributes to both splits).
-- About 11 documents per event → about 55 same-event pairs per event.
+**Purpose of I1–I3.** They test that "same facts" or "same register" is not read as "same source". The I1 instruction ("write in the same register") is artificial and may not mirror real reporters; this is a declared limitation. I2 and I3 are added so that the result does not depend on that single instruction.
+
+**Hard positives (replaces the former case J).** There is no separately selected hard-positive stratum, and **no selection is made with any similarity metric**. All of C–G is treated as the non-literal set. Hard positives are defined by generation properties only: strongly compressed summaries (C), rewrites by a different model (D), sentence-level paraphrases (E), compositions (F) and chains (G). Jaccard and every other similarity score are computed **after** the dataset is frozen and are used only for reporting (e.g. recall as a function of lexical overlap), never to choose which pairs are evaluated.
+
+### 4.5 Size (provisional — N is set only after a power analysis)
+- The number of events **N is not fixed by this document.** The earlier proposal of 40 events (20 dev / 20 test) is a **starting value only**, kept for planning.
+- **Required before any generation:** a power / sensitivity analysis of the §8.2 success test (≥ 0.20 absolute gain in non-literal recall, event-level bootstrap CI excluding 0, FPR ≤ 10%), run on **simulated** per-event outcomes with assumed effect sizes and between-event variance. Its assumptions and result are committed to the repository and N is chosen from it. If 20 test events are not enough, N is increased **before** generating the dataset.
+- The analysis uses no real experimental results; it must not be repeated or adjusted after results are seen. The criteria themselves are not changed to fit the available N.
+- Split **by event** (no event contributes to both splits).
+- 12 documents per event (ORIG, A–G, H, I1–I3) → 66 same-event pairs per event.
 - Cross-event pairs are generated but reported **separately** and never pooled with same-event pairs in the primary metrics.
 
 ---
@@ -144,11 +154,13 @@ All checks run before any method is evaluated. Any failure blocks evaluation.
 | C1 | Label words in text | No document contains label-revealing terms (e.g. "independent", "separate", "copy", "summary", "rewrite", "paraphrase", "original", "according to [another document]") — list versioned in config; matches logged |
 | C2 | Opaque identifiers | Document IDs are random; no class, family or generator name in IDs or filenames seen by methods |
 | C3 | Real transformations | Every derived class except A differs from its source; B within its edit bounds; C within its length bound |
-| C4 | Hard-negative share | Same-event independent pairs (H, I) are reported separately; the primary metrics use **same-event pairs only** |
+| C4 | Hard-negative share | Same-event independent pairs (H, I1, I2, I3) are reported separately; the primary metrics use **same-event pairs only** |
 | C5 | Split leakage | No event appears in both dev and test; thresholds and prompts are frozen before the test split is read |
 | C6 | Style confound | A trivial classifier using only surface features (length, length ratio, generator model) must not separate dependent from independent same-event pairs well. If it does, the dataset is confounded and must be regenerated |
 | C7 | Difficulty floor | If the best lexical baseline already reaches recall ≥ 0.8 on C–G at the §8 operating point, the dataset is too easy and is invalid for testing H1 |
 | C8 | Method/generator separation | Any LLM-based method is evaluated with results stratified by whether its model also generated one of the documents in the pair |
+| C9 | Detector isolation | Methods receive **only the two texts**. The evaluation harness strips and withholds metadata, generator model, class labels, provenance and any ID or filename that encodes them; the information-flow graph is loaded only by the scoring step. A test confirms that a method cannot read these fields. LLM-based methods must not be shown anything but the two texts and their own fixed prompt |
+| C10 | Hard-positive selection | No pair is selected, excluded or stratified using a similarity score computed by any evaluated method or baseline. Strata are defined by generation case only (§4.4) |
 
 ---
 
@@ -161,10 +173,11 @@ All checks run before any method is evaluated. Any failure blocks evaluation.
 | B1 | Token Jaccard | EP-001 implementation, unchanged |
 | B2 | TF-IDF cosine | word unigrams + bigrams, fitted on the dev split only |
 | B3 | Sentence-embedding cosine | one pinned open-source embedding model; exact model name and version fixed in config before the run |
-| B4 | corroborate-mcp clustering | reproduction of its published `assess()` clustering: Jaccard ≥ 0.55 on normalized **headline** tokens (§10). Each generated document therefore includes a headline |
+| B4 | corroborate-mcp clustering (faithful reproduction) | reproduction of its published `assess()` clustering: Jaccard ≥ **0.55** on normalized **headline** tokens (§10). The threshold is the documented original and is **not tuned** on any split. Each generated document therefore includes a headline |
+| B4-tuned | corroborate-mcp rule, threshold tuned | same rule as B4, but the threshold is chosen on the dev split to meet the §8 operating point. Reported **separately** as an optimised lexical baseline; never presented as corroborate-mcp |
 | B5 | Simple LLM judge | one direct prompt: "Was text B produced using text A? yes / no / uncertain", fixed wording, run with a local open model; a sample with one frontier model if the budget allows |
 
-Thresholds for B1–B4 are chosen on the **dev split** to meet the §8 operating point, then frozen.
+Thresholds for B1–B3 and B4-tuned are chosen on the **dev split** to meet the §8 operating point, then frozen. **B4 is the exception: its 0.55 threshold is fixed by the original project and never tuned.**
 
 **Why B5 is a baseline and not a candidate.** If a single plain prompt already separates the classes, no library is needed. Beating B5 is a requirement for continuing (§8).
 
@@ -182,7 +195,7 @@ Same-event pairs from the **test** split only.
 
 ### 7.2 Reported for every method
 - Precision, recall, F1, false-positive rate, false-negative rate — DEPENDENT vs INDEPENDENT.
-- **Per-case breakdown:** recall for each of A, B, C, D, E, F, G and J; false-positive rate for H and for I **separately**.
+- **Per-case breakdown:** recall for each of A, B, C, D, E, F, G; false-positive rate for H, I1, I2 and I3 **separately**. Recall as a function of lexical overlap (e.g. Jaccard bins) is reported as a **post-hoc descriptive** analysis only.
 - **Non-literal recall:** pooled recall over C, D, E, F, G.
 - Cross-event pairs: reported in a separate table, never pooled.
 
@@ -196,14 +209,14 @@ Same-event pairs from the **test** split only.
 ## 8. Success and kill criteria — fixed before the experiment
 
 ### 8.1 Operating point and why
-Methods are compared at a fixed **false-positive rate ≤ 10% on independent same-event pairs (H ∪ I)**, with a threshold chosen on dev.
+Methods are compared at a fixed **false-positive rate ≤ 10% on independent same-event pairs (H ∪ I1 ∪ I2 ∪ I3)**, with a threshold chosen on dev.
 *Rationale:* a false positive merges two genuinely independent sources and **undercounts** corroboration — the exact error the project exists to prevent. 10% is a judgement call, not a derived value; results are also reported at 5% and 20% as a sensitivity check.
 
 ### 8.2 SUCCESS (H1 supported on synthetic data) — all must hold
-1. Non-literal recall (C–G) of the best candidate exceeds the best of B1–B4 by **≥ 0.20 absolute**, with the bootstrap 95% CI of the difference excluding 0.
+1. Non-literal recall (C–G) of the best candidate exceeds the best of B1–B4 (B4 = the faithful 0.55 reproduction; B4-tuned is reported alongside but is not part of this comparison) by **≥ 0.20 absolute**, with the bootstrap 95% CI of the difference excluding 0.
    *Rationale for 0.20:* smaller gains on synthetic data are unlikely to survive transfer to real text; judgement call, stated openly.
 2. It also exceeds **B5 (simple LLM judge)** on non-literal recall, with the CI of the difference excluding 0.
-3. FPR on case **I** (hard negatives) is not higher than the best baseline's FPR on I by more than 5 percentage points.
+3. FPR on each hard-negative case **I1, I2 and I3** is not higher than the best baseline's FPR on that case by more than 5 percentage points.
 4. Criteria 1–3 hold under the **worst** prompt paraphrase (§7.3).
 5. Cost is practical: runnable on a single consumer machine at ≤ 2 seconds per pair, **or** ≤ USD 0.01 per pair through an API (bounds open for review).
 6. Checks C1–C8 all passed.
@@ -212,8 +225,8 @@ Success on EP-002 authorises **only** EP-003 (real-world data, e.g. agency copy 
 
 ### 8.3 KILL — any one is sufficient
 1. No candidate improves non-literal recall by the margin in 8.2(1).
-2. Recall improves only at the cost of FPR on H ∪ I above the operating point, or on I beyond the 8.2(3) margin.
-3. No method separates case I from cases C/D better than chance (CI of the difference includes 0).
+2. Recall improves only at the cost of FPR on H ∪ I1 ∪ I2 ∪ I3 above the operating point, or on any of I1–I3 beyond the 8.2(3) margin.
+3. No method separates the hard negatives (any of I1, I2, I3) from cases C/D better than chance (CI of the difference includes 0).
 4. The improvement disappears under prompt paraphrase (fragile prompts).
 5. The cost bounds in 8.2(5) cannot be met.
 6. B4 (corroborate-mcp) or another existing open-source system performs within the CI of the best candidate.
@@ -270,7 +283,7 @@ In scope: dataset generator, automated checks, baselines, candidate methods, eva
 
 Out of scope: SDK, product, UI, API, deployment, genealogy/direction of derivation, real-world data (reserved for EP-003), the full Epistemic Layer architecture.
 
-Pipeline: `dataset → checks → baselines → candidates (dev) → freeze → evaluation (test) → report`.
+Pipeline: `power analysis (sets N) → dataset → checks → baselines → candidates (dev) → freeze → evaluation (test) → report`.
 
 ---
 
@@ -290,8 +303,25 @@ Pipeline: `dataset → checks → baselines → candidates (dev) → freeze → 
 
 1. **Budget.** Multi-model generation and the frontier sample of B5 need a small API spend. If the budget is strictly zero, everything runs on local open models, with a weaker generator diversity (C8) and no frontier comparison. Decision needed.
 2. **Hidden dependence between generator models.** Different models trained on overlapping data may share phrasing for the same facts. Is stratifying by generator (C8) enough, or is an extra control needed?
-3. **Margins.** Are 0.20 (recall gain), 10% (FPR operating point), 5 points (case I) and the cost bounds acceptable? They must be agreed **before** the run.
-4. **Size.** Is 40 events (20 test) enough for the CI to be informative? A power estimate can be done on dev before freezing.
+3. **Margins.** Are 0.20 (recall gain), 10% (FPR operating point), 5 points (cases I1–I3) and the cost bounds acceptable? They must be agreed **before** the run. The power analysis (question 4) may show that they are unreachable at an affordable N; if so, N is raised, not the margins relaxed.
+4. **Size.** N is not fixed (§4.5). A power / sensitivity analysis on simulated outcomes must be written, reviewed and committed **before** the dataset is generated. Its assumptions (effect size, between-event variance, correlation between cases) need agreement.
+
+### Non-blocking items from review (recorded, not yet resolved)
+- Costs (§8.2.5): bounds remain open and should be clarified with the budget decision (question 1).
+- The exact generation procedure (prompts per case, observation-set construction, model assignment) is to be documented in full before generation, as part of the frozen config (§12).
+
+---
+
+## Changelog
+
+**0.2 (2026-10-02)** — after review of PR #2. Specification text only; no code. H1 and the kill criteria are unchanged in substance.
+1. **B4** is now a faithful reproduction of corroborate-mcp with its original threshold 0.55, no tuning (§6.1). A tuned variant, **B4-tuned**, is reported separately.
+2. **Case J removed.** Hard positives are no longer selected using Jaccard; all of C–G is the non-literal set; similarity scores are computed only after the dataset is frozen (§4.4, check C10).
+3. **Ground truth ≠ detector input** made an explicit rule (§3, §4.3); new check **C9** (detector isolation).
+4. **Hard negatives strengthened:** case I split into **I1** (similar wording), **I2** (same facts, different wording) and **I3** (same facts and factual structure) (§4.4); metrics and criteria updated to I1–I3 (§7.2, §8).
+5. **Dataset size:** N is no longer fixed at 40; a **power / sensitivity analysis** on simulated outcomes is required before generation (§4.5, §11, §13).
+
+**0.1 (2026-10-02)** — first draft.
 
 ---
 
