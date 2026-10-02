@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.3 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
-| Version | 0.3 (2026-10-02) — see Changelog at the end |
+| Status | **DRAFT — v0.4 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Version | 0.4 (2026-10-02) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -65,7 +65,7 @@ EP-001 measures **near-identical lexical overlap**, not evidence independence. I
 ### 2.1 What EP-002 measures
 EP-002 measures **independence of origin with respect to the complete, recorded provenance graph of a synthetic benchmark**. It does **not** measure absolute epistemic independence in the real world.
 
-Formally, the label of a pair is a function of the generation graph only (§3.2). If two documents A and B derive from a source X that is **not a node of the graph**, then A ← X → B is invisible to the benchmark and the pair is labelled INDEPENDENT_ORIGIN even though, in the world, they share an origin. EP-002 does not attempt to solve this problem. It is a declared limitation and it determines what a success may be used for (§2.3).
+Formally, the label of a pair is a function of the generation graph only (§3). If two documents A and B derive from a document X that is **not a node of the graph**, then A ← X → B is invisible to the benchmark and the pair is labelled independent even though, in the world, they share an origin. EP-002 does not attempt to solve this problem. It is a declared limitation and it determines what a success may be used for (§2.3).
 
 ### 2.2 Closure rule
 Every text that is used as input to any generation step must itself be a node of the graph (including auxiliary and later-excluded documents). A document excluded from evaluation (§5.6) keeps its node; only its pairs leave the evaluation. A check (C12, §6) audits generation prompts for undeclared inputs.
@@ -74,7 +74,7 @@ Every text that is used as input to any generation step must itself be a node of
 A success on EP-002 authorises **only** EP-003 (real-world data, e.g. an agency copy and its republications, where the common source is observable and the ground-truth protocol is different). It does not authorise an SDK, a product, an API, or any claim about real-world independence.
 
 ### 2.4 Out of scope
-SDK, product, UI, API, deployment; direction of derivation (who copied whom) and full genealogy beyond the categories of §3.2; real-world data (EP-003); sources not observed in the graph; the full Epistemic Layer architecture. A declaration that the idea is valid because a benchmark can be built is explicitly not a result.
+SDK, product, UI, API, deployment; direction of derivation (who copied whom) and full genealogy beyond the diagnostic categories of §3.4; real-world data (EP-003); documents not observed in the graph; the full Epistemic Layer architecture. A declaration that the idea is valid because a benchmark can be built is explicitly not a result.
 
 ---
 
@@ -85,33 +85,50 @@ SDK, product, UI, API, deployment; direction of derivation (who copied whom) and
 |---|---|---|
 | **Similarity** | A and B say similar things (lexically or semantically) | Yes |
 | **Derivation** | B was produced using A (directly or through intermediaries, in whole or in part) | Sometimes |
-| **Shared origin / independence** | A and B descend from a common source document, or one from the other, versus no common source document | Only indirectly |
+| **Shared origin / independence** | A and B descend from the same origin document, versus from different origin documents | Only indirectly |
 
 Similarity ≠ derivation ≠ origin-independence:
 - A and B can be **highly similar yet independent**: two reporters observe the same event and write nearly the same sentence.
 - A and B can be **dissimilar yet dependent**: B is a 100-word summary or an AI rewrite of a 1,000-word A.
 - Two derivatives C and D of the same ORIG are **not derived from each other but do not count as two origins**.
 
-### 3.2 Primary task: independence of origin
-For each event there is a directed graph over its documents. There is an edge u → v **if and only if the exact text of u, or a deterministic function of it, was in the generation context of v** (prompt, tool input, or any other input). Nothing else creates an edge: not similarity, not shared facts, not the same model, not a shared prompt template, not the world event itself. A **root** is a document produced from an observation set only (no incoming edge). Anc(v) is the set of ancestors of v including v itself.
+### 3.2 Graph, roots and ancestry (definitions)
+For each event there is a directed graph G = (V, E) over its documents. There is an edge u → v **if and only if the exact text of u, or a deterministic function of it, was in the generation context of v** (prompt, tool input, or any other input). Nothing else creates an edge: not similarity, not shared facts, not the same model, not a shared prompt template, not the world event itself. The world event (the structured event record) is **not** an origin; only a document is.
 
-For a pair (u, v):
+- **Root:** a document with no incoming edge (produced from an observation set only). R ⊆ V is the set of roots.
+- **Anc(v):** the set of ancestors of v, including v itself. Roots(v) = Anc(v) ∩ R.
+- **Ancestor order:** u ⪯ v iff u ∈ Anc(v). It is a partial order.
+- **Ancestor-sharing relation on V:** u ~_G v iff Anc(u) ∩ Anc(v) ≠ ∅. It is reflexive and symmetric and is **not transitive in general** (§3.5). It is a graph-level relation used to label diagnostic pairs outside the primary set; it is **not** the primary relation.
 
-| Category | Condition | Primary label |
-|---|---|---|
-| DIRECT_DERIVATION | edge u → v or v → u | dependent |
-| INDIRECT_DERIVATION | u is an ancestor of v (or conversely) through a path of length ≥ 2, no direct edge | dependent |
-| SHARED_ORIGIN_NO_DIRECT_FLOW | neither is an ancestor of the other, but Anc(u) ∩ Anc(v) ≠ ∅ | dependent |
-| INDEPENDENT_ORIGIN | Anc(u) ∩ Anc(v) = ∅ | independent |
+### 3.3 Primary relation: shared-origin equivalence
+The **primary evaluation set** S ⊆ V is fixed by design (§5.5). Let R_S = R ∩ S be the origin roots of S.
 
-**Primary label:** `dependent` iff Anc(u) ∩ Anc(v) ≠ ∅. The world event (the structured event record) is **not** an origin; only a document is. Sharing facts about the same event does not create dependence.
+- **Single-origin condition.** Every v ∈ S has **exactly one** S-root among its ancestors: |Roots(v) ∩ R_S| = 1. This defines the **origin function** o : S → R_S, with o(v) the unique S-root in Anc(v).
+- **No-hidden-ancestor condition.** For all u, v ∈ S: u ~_G v ⇔ o(u) = o(v).
+- **Shared-origin equivalence** ≈ on S: u ≈ v iff o(u) = o(v). It is the **kernel of the function o**, therefore reflexive, symmetric and transitive: an **equivalence relation**. It partitions S into |R_S| **origin blocks**. There are exactly 5 per event: those of ORIG, H, I1, I2, I3.
+- **Primary label:** a pair in S is `dependent` iff u ≈ v, otherwise `independent`. By the no-hidden-ancestor condition this coincides with u ~_G v on S.
 
-The relation is **not transitive** (a composed document F built from ORIG and P makes F dependent on both while ORIG and P stay independent). This is intended and is used as a diagnostic (§8.6).
+Both conditions are guaranteed by the design (§5.5: the auxiliary root P is outside S; the only composition in S has exactly one S-root) **and verified automatically on the recorded graph of every event** (C16). An event that violates either condition is excluded and counted (§5.6).
 
-### 3.3 Secondary task: information-flow diagnostic
-The same graph yields a second label, `ancestry`: dependent iff the category is DIRECT or INDIRECT. It differs from the primary label only on SHARED_ORIGIN pairs. It is **diagnostic only, with no pass/fail role**: recall of the primary detector is reported per category (§8.6). Direction and genealogy remain out of scope.
+**Defining statement.** *Shared-origin is the primary equivalence relation; ancestry is a separate diagnostic; the B4 reduction is a separate evaluation transformation.*
 
-### 3.4 Operational definition of "non-literal derivation"
+### 3.4 Ancestry diagnostic (secondary, no pass/fail role)
+For a pair in S with u ≈ v, the **ancestry category** is read from the ancestor order:
+
+| Category | Condition |
+|---|---|
+| DIRECT_DERIVATION | edge u → v or v → u |
+| INDIRECT_DERIVATION | u ≺ v or v ≺ u through a path of length ≥ 2, no direct edge |
+| SHARED_ORIGIN_NO_DIRECT_FLOW | u and v incomparable in ⪯, same origin block |
+
+For a pair with u ≉ v the category is INDEPENDENT_ORIGIN. Ancestry is **not** the primary relation and is **not** an equivalence. The ancestry label ("dependent iff DIRECT or INDIRECT") differs from the primary label only on SHARED_ORIGIN_NO_DIRECT_FLOW pairs. Recall of the primary detector is reported per category (D5). Direction and full genealogy remain out of scope.
+
+### 3.5 Bridge diagnostic (outside the primary set)
+The composition F = compose(ORIG, P) has Roots(F) = {ORIG, P}. ORIG and P are **independent roots** (ORIG ≁_G P) while F ~_G ORIG and F ~_G P: this is the standard failure of transitivity of ~_G on V.
+
+It does **not** violate the primary partition, for three reasons: (1) P ∉ S, so P is not an origin root of S; (2) within S, F has the single S-root ORIG, so o(F) = ORIG; (3) no other document of S has P among its ancestors, so the no-hidden-ancestor condition holds. The primary relation is defined on S only, where ≈ is an equivalence. The pairs (P, F) and the pairs of P with other documents belong to the diagnostic classes PC10–PC11 (§5.5), labelled by ~_G; they never enter the primary metrics. The **bridge merge rate** (D6) measures how often a method merges ORIG and P through F.
+
+### 3.6 Operational definition of "non-literal derivation"
 B derives from A iff the graph contains a path A ⇝ B. A derivation is **non-literal** if B is neither an exact copy of A nor a light edit of A (≤ 10% of tokens changed). The graph is the truth; the amount of content that survives is a covariate, never a reason to relabel.
 
 | Situation | Label | Treatment |
@@ -121,11 +138,17 @@ B derives from A iff the graph contains a path A ⇝ B. A derivation is **non-li
 | B drops the distinctive details of A | derived | reported as the "zero retention" stratum, the hardest stratum |
 | B combines A with another document | derived from both | two incoming edges |
 | B passes through several transformations | INDIRECT (path ≥ 2) | maximum depth 2 in EP-002 |
-| B is semantically similar but generated without A's text | INDEPENDENT_ORIGIN | similarity creates no edge |
-| B uses the same world facts but not the text of A | INDEPENDENT_ORIGIN | facts come from the event record, never from a document |
+| B is semantically similar but generated without A's text | independent origin | similarity creates no edge |
+| B uses the same world facts but not the text of A | independent origin | facts come from the event record, never from a document |
 
-### 3.5 Ground truth is not detector input
+### 3.7 Ground truth is not detector input
 The graph is known to the benchmark and is used **only** to score methods. The relation must be inferred **exclusively from the two document texts**. That a generation process knows A → B does not prove that an outside observer can infer it from A and B; that inference is what is being tested. Consequently a detector receives nothing but the two texts (headline included, being part of the text): no metadata, no generator model, no class label, no provenance, no ID, filename, timestamp or position that encodes any of these (C2, C9, C13).
+
+### 3.8 Terminology
+- **Origin:** a root document of S (an element of R_S) and, by extension, the **origin block** it induces in S.
+- **Lineage:** the set of all documents of V descended from a root, root included (lineage X from ORIG, lineage Y from H). The origin block of a root is its lineage restricted to S.
+- **Ancestry:** the ancestor partial order ⪯ (§3.2). **Ancestor-sharing:** the graph relation ~_G. Neither is the primary relation.
+- **Source:** used only in running prose for "independent sources", the project goal. The technical objects are **documents**.
 
 ---
 
@@ -133,7 +156,7 @@ The graph is known to the benchmark and is used **only** to score methods. The r
 
 **H0.** On the reference dataset, no tested method detects dependent pairs better than the best baseline by at least the minimum effect of interest (0.20 absolute in non-literal recall at equal false-positive rate), without the controlled increase in false positives defined in §9.
 
-**H1.** The primary candidate, selected on the development split and then frozen, meets the success criteria S-a to S-f of §9 on the held-out test split: it detects a substantially larger share of non-literal dependent pairs — summaries, rewrites, paraphrases, compositions, chains and the sibling pairs between them — than **each** baseline including a simple LLM judge, at the same false-positive rate, **without an unacceptable increase in false positives on genuinely independent sources**.
+**H1.** The primary candidate, selected on the development split and then frozen, meets the success criteria S-a to S-f of §9 on the held-out test split: it detects a substantially larger share of non-literal dependent pairs — summaries, rewrites, paraphrases, compositions, chains and the sibling pairs between them — than **each** baseline including a simple LLM judge, at the same false-positive rate, **without an unacceptable increase in false positives on genuinely independent documents**.
 
 The method is **not** chosen in advance. Candidates are explored on the development split only (§7.2).
 
@@ -142,7 +165,7 @@ The method is **not** chosen in advance. Candidates are explored on the developm
 ## 5. Dataset
 
 ### 5.1 Why EP-001's construction cannot be reused
-If a single author (human or one LLM) writes both the original and the "independent" sources, those sources share model, style and prior knowledge, and a detector can learn style. If dependent documents are always transformed texts and independent documents are always untransformed ones, a detector can learn "was this text transformed" (§1.5.5). The design below addresses both: several generator families, randomized and balanced assignment, and **two parallel lineages per event with the same transformations** so that the label depends on lineage membership and not on document type.
+If a single author (human or one LLM) writes both the original and the "independent" documents, those documents share model, style and prior knowledge, and a detector can learn style. If dependent documents are always transformed texts and independent documents are always untransformed ones, a detector can learn "was this text transformed" (§1.5.5). The design below addresses both: several generator families, randomized and balanced assignment, and **two parallel lineages per event with the same transformations** so that the label depends on origin-block membership and not on document type.
 
 ### 5.2 Events
 Each event is a structured record of **fictional** facts: a core fact set K, per-reporter unique details U_r, an ordering plan for facts, an event claim string, and a closed list of style identifiers. Fictional = no model has prior knowledge of it. **All entity names, numbers and quotes are ASCII alphanumeric** (the title normalizer of baseline B4 deletes any other character and would split or corrupt names). Fact tokens are exact strings so that fact presence in a text can be determined by exact match, without a model.
@@ -169,32 +192,33 @@ Every document has a headline (first line of the text).
 | I3 (same facts, same structure) | K ∪ U_I3 | **the order plan assigned to ORIG in the record** (not extracted from ORIG's text) | random |
 | P | K ∪ U_P | its own | random |
 
-I1–I3 test that "same facts" or "same register" is not read as "same source". The I1 instruction is artificial and may not mirror real reporters (declared limitation); I2 and I3 are added so that the result does not depend on a single instruction.
+I1–I3 test that "same facts" or "same register" is not read as "same origin". **They are artificial hard negatives, built as stress tests; they are not an estimate of the real-world prevalence or of the real-world false-positive rate.** The I1 instruction is artificial and may not mirror real reporters (declared limitation); I2 and I3 are added so that the result does not depend on a single instruction.
 
-**Derived documents.** A derived document is written by a process that receives the **text** of its source(s): A (copy, verbatim including headline), B (deterministic seeded script changing at least one and at most 10% of tokens), C/C_y (LLM summary), D/D_y (LLM rewrite), E/E_y (LLM paraphrase preserving sentence structure), F (LLM composition of ORIG and P), G/G_y (LLM rewrite of D/D_y). Prompts are fixed templates stored in the configuration. Derivation prompts are **not** told to keep or to drop unique details.
+**Derived documents.** A derived document is written by a process that receives the **text** of its parent document(s): A (copy, verbatim including headline), B (deterministic seeded script changing at least one and at most 10% of tokens), C/C_y (LLM summary), D/D_y (LLM rewrite), E/E_y (LLM paraphrase preserving sentence structure), F (LLM composition of ORIG and P), G/G_y (LLM rewrite of D/D_y). Prompts are fixed templates stored in the configuration. Derivation prompts are **not** told to keep or to drop unique details.
 
-**Generators and assignment.** At least three generator model families (open-weight, local in the primary configuration). Each document's generator and style id are assigned by a **blocked, randomized, balanced** algorithm per event, recorded in an assignment table that is checked **before any text is generated** (C14). The rewrite case D is no longer constrained to a "different model": generator choice is randomized for every case so that "same generator" does not predict dependence. Every prompt, raw output, model name, version and parameter set is cached and committed.
+**Generators and assignment.** At least three generator model families (open-weight, local in the primary configuration). Each document's generator and style id are assigned by a **blocked, randomized, balanced** algorithm per event, recorded in an assignment table that is checked **before any text is generated** (C14). The rewrite case D is not constrained to a "different model": generator choice is randomized for every case so that "same generator" does not predict dependence. Every prompt, raw output, model name, version and parameter set is cached and committed.
 
 **Context audit.** Every generation prompt is logged. A check (C12) scans it for n-grams of at least 8 tokens from any document that is not declared as input, and fails on any match.
 
 ### 5.5 Pair classes, cells and roles
-The **primary document set S** has 14 documents: all roots except P, and all derived documents except the literal ones A and B (A and B are near-duplicates of ORIG and would pseudo-replicate its pairs). S has 91 pairs. Within S the primary relation is an equivalence relation (P is outside S), with exactly **5 origins** per event: ORIG, H, I1, I2, I3.
+The **primary document set S** has 14 documents: all roots except P, and all derived documents except the literal ones A and B (A and B are near-duplicates of ORIG and would pseudo-replicate its pairs):
+S = {ORIG, H, I1, I2, I3, C, D, E, F, G, C_y, D_y, E_y, G_y}. S has 91 pairs. The origin function is o(ORIG) = o(C) = o(D) = o(E) = o(F) = o(G) = ORIG; o(H) = o(C_y) = o(D_y) = o(E_y) = o(G_y) = H; o(I1) = I1; o(I2) = I2; o(I3) = I3. The **design constraints** that make §3.3 hold: P ∉ S; every composition in S has exactly one S-root.
 
 R = root, D = derived (non-literal). Counts are per event.
 
-| # | Class | Pairs | Label / category | Role |
+| # | Class | Pairs | Label / ancestry category | Role |
 |---|---|---|---|---|
-| PC1 | R–D, same lineage, direct | 7 | dependent / DIRECT (ORIG–C,D,E,F; H–C_y,D_y,E_y) | **primary positive (cell R–D)** |
-| PC2 | R–D, same lineage, indirect | 2 | dependent / INDIRECT (ORIG–G; H–G_y) | **primary positive (cell R–D)** |
-| PC3 | D–D, same lineage, direct | 2 | dependent / DIRECT (D–G; D_y–G_y) | **primary positive (cell D–D)** |
-| PC4 | D–D, same lineage, siblings | 14 | dependent / SHARED_ORIGIN | **primary positive (cell D–D)** |
-| PC5 | R–D, different lineages | 36 | independent | **primary negative (cell R–D)** |
-| PC6 | D–D, different lineages | 20 | independent | **primary negative (cell D–D)** |
+| PC1 | R–D, same origin block, direct | 7 | dependent / DIRECT (ORIG–C,D,E,F; H–C_y,D_y,E_y) | **primary positive (cell R–D)** |
+| PC2 | R–D, same origin block, indirect | 2 | dependent / INDIRECT (ORIG–G; H–G_y) | **primary positive (cell R–D)** |
+| PC3 | D–D, same origin block, direct | 2 | dependent / DIRECT (D–G; D_y–G_y) | **primary positive (cell D–D)** |
+| PC4 | D–D, same origin block, siblings | 14 | dependent / SHARED_ORIGIN_NO_DIRECT_FLOW | **primary positive (cell D–D)** |
+| PC5 | R–D, different origin blocks | 36 | independent | **primary negative (cell R–D)** |
+| PC6 | D–D, different origin blocks | 20 | independent | **primary negative (cell D–D)** |
 | PC7 | R–R (ORIG, H, I1, I2, I3) | 10 | independent | guard negatives; no positive exists in this cell |
-| PC8 | pairs with A or B, same lineage | 13 | dependent | diagnostic (literal sanity) |
-| PC9 | pairs with A or B, different lineage | 16 | independent | diagnostic |
-| PC10 | (P, F) | 1 | dependent / DIRECT | diagnostic |
-| PC11 | other pairs with P | 15 | independent (incl. (ORIG, P): the bridge case) | diagnostic |
+| PC8 | pairs with A or B, same lineage | 13 | dependent (~_G) | diagnostic (literal sanity) |
+| PC9 | pairs with A or B, different lineage | 16 | independent (~_G) | diagnostic |
+| PC10 | (P, F) | 1 | dependent (~_G) / DIRECT | diagnostic (bridge) |
+| PC11 | other pairs with P | 15 | independent (~_G), incl. (ORIG, P) | diagnostic (bridge) |
 | — | pairs with an excluded document; cross-event pairs | — | — | **excluded** from the primary metrics; cross-event pairs are reported in a separate table |
 
 Total per event: 7+2+2+14+36+20+10+13+16+1+15 = 136 = C(17,2).
@@ -208,7 +232,7 @@ Total per event: 7+2+2+14+36+20+10+13+16+1+15 = 136 = C(17,2).
 **Named negative sets.** For each case k ∈ {H, I1, I2, I3}: N_k = pairs of the root k with {ORIG, C, D, E, F, G} (6 pairs per event: 1 in PC7, 5 in PC5). These are the hard-negative sets used by S-d.
 
 ### 5.6 Exclusions, ledger and regeneration
-A pair is excluded (logged and counted) if generation failed, refused or produced off-topic or wrong-language output; if a derived text is identical to its source when the case requires a change; or if the flow log of either document is missing or inconsistent. If more than 10% of an event's documents are excluded, the event is excluded. If more than 10% of events are excluded, the dataset is regenerated with the cause documented; it is not silently patched.
+A pair is excluded (logged and counted) if generation failed, refused or produced off-topic or wrong-language output; if a derived text is identical to its source when the case requires a change; or if the flow log of either document is missing or inconsistent. An event is excluded if it violates C16, or if more than 10% of its documents are excluded. If more than 10% of events are excluded, the dataset is regenerated with the cause documented; it is not silently patched.
 
 **Generation ledger** (versioned): attempt number, seed, generation-code version, configuration hash, discarded datasets and the reason for each discard.
 
@@ -221,7 +245,7 @@ A pair is excluded (logged and counted) if generation failed, refused or produce
 Mechanical single-document repairs on the test split (C1–C3, C12, C15) are allowed, logged, and never made after looking at any method's result.
 
 ### 5.7 Splits and order of phases
-Split **by event** (no event appears in both splits). The order is fixed (§15): the dev split is generated and validated first; the primary candidate and every threshold are then frozen; **only after the freeze is the test split generated**, with the frozen generation configuration and new seeds. The test split does not exist while methods are explored.
+Split **by event** (no event appears in both splits). The order is fixed (§15): the dev split is generated and validated first; the baselines, the primary candidate and every threshold are then frozen; **only after the freeze is the test split generated**, with the frozen generation configuration and new seeds. The test split does not exist while methods are explored.
 
 ---
 
@@ -235,36 +259,39 @@ All gating checks run before any method is evaluated. A failure blocks evaluatio
 | C2 | Opaque identifiers and layout | class leaking through IDs, filenames, file order, timestamps, cache metadata, pair order | Random IDs; no class, lineage or generator name anywhere a method can read; pair order and document order randomized with seeds |
 | C3 | Real transformations | no-op or out-of-bound derivations | Every derived case except A differs from its source; B within its edit bounds; C within its length bound |
 | C4 | Pair-class reporting | pooling of unlike pairs | Primary metrics use only PC1–PC6; every class of §5.5 is reported separately |
-| C5 | Split leakage | dev/test contamination | No event appears in both splits; thresholds, prompts and the primary candidate are frozen and tagged before the test split is generated; the test split is generated only after the freeze (§5.7) |
+| C5 | Split leakage | dev/test contamination | No event appears in both splits; baselines, thresholds, prompts and the primary candidate are frozen and tagged before the test split is generated; the test split is generated only after the freeze (§5.7) |
 | C6 | Surface confound classifier (dev only) | stylistic/length signal that alone separates classes | A pair-level classifier on surface features (length, length ratio, TF-IDF of each single text), trained **within each cell** with event-grouped cross-validation, must have recall_w at FPR_w = 10% **below the best of B1, B2, B3, B4-tuned plus 0.20**; otherwise the dataset is confounded |
 | C7 | Difficulty floor (dev only) | a dataset too easy to test H1 | If the best of B1, B2, B3, B4-tuned reaches recall_w ≥ 0.8 at FPR_w = 10% on dev, the dataset is invalid |
 | C8 | Detector/generator separation | an LLM detector recognising its own style or priors | In the primary configuration the detector model family is **not** among the generator families. If that is impossible, results are stratified by whether the detector family generated a document of the pair and the limitation is stated |
-| C9 | Detector isolation | provenance metadata reaching the detector | Methods receive **only the two texts**. The harness strips and withholds metadata, generator, class labels, provenance, and IDs; the information-flow graph is loaded only by the scoring step. A test confirms a method cannot read these fields. An LLM-based method is shown only the two texts and its own fixed prompt |
+| C9 | Detector isolation | provenance metadata reaching the detector | Methods receive **only the two texts**. The harness strips and withholds metadata, generator, class labels, provenance, and IDs; the recorded provenance graph is loaded only by the scoring step. A test confirms a method cannot read these fields. An LLM-based method is shown only the two texts and its own fixed prompt |
 | C10 | Selection independence | benchmark construction leaking from the baselines | No pair is selected, excluded or stratified using a similarity score computed by any evaluated method or baseline. Strata are defined by generation case only |
-| C11 | Headroom (dev only) | a task where success is impossible by construction | headroom = recall_w(O1) − best baseline recall_w, at FPR_w = 10% on dev, with O1 evaluated out-of-sample (§7.4); must be ≥ 0.20. It is a necessary condition, not a sufficient one |
+| C11 | Headroom (dev only) | a task where success is impossible by construction | headroom = recall_w(O1) − best frozen-baseline recall_w, at FPR_w = 10% on dev, with O1 evaluated out-of-sample (§7.4); must be ≥ 0.20. It is a necessary condition, not a sufficient one |
 | C12 | Context audit | accidental edges that falsify the graph | No generation prompt contains an n-gram of 8 or more tokens from a document that is not a declared input |
 | C13 | Score purity | within-event normalization or corpus statistics exploiting constant event composition and prevalence | The score of a pair depends only on the two texts and on parameters frozen on dev. Test: the score of a pair computed standalone is identical to its score computed inside the full event. Set-level methods must be declared **before** the test; B4-faithful and B4-core are set-level by construction and are the declared exception |
-| C14 | Assignment balance (design time) | "same generator" or "same style id" predicting the label | On the assignment table, before generation: within each cell the rate of same-generator and of same-style-id pairs differs between positives and negatives by at most 0.05 (exactly 0 where blocked randomization allows). Both same-generator and cross-generator strata contain at least 30% of the negatives |
+| C14 | Assignment balance (design time, **pair level**) | "same generator" or "same style id" predicting the label | Computed on the assignment table **on pairs, not on documents**, before generation, **within each cell and for positives and negatives separately**: the rate of same-generator pairs, and the rate of same-style-id pairs, differ between positives and negatives by at most 0.05 (exactly 0 where blocked randomization allows). Within each cell, both same-generator and cross-generator pairs make up at least 30% of the negatives |
 | C15 | Boilerplate | format artefacts that reveal the class | No document contains LLM boilerplate ("Here is", "Sure", "As an AI", markdown headings, "Summary:"); offending documents are regenerated mechanically and logged |
+| C16 | Origin-function check (per event, automated) | a recorded graph that contradicts the primary relation | On the recorded graph: (a) every document of S has exactly one S-root among its ancestors; (b) for every pair of S, ancestor-sharing holds iff the two documents have the same S-root (§3.3). An event that violates (a) or (b) is excluded and counted (§5.6) |
 
 **Reported diagnostics (no pass/fail role):**
-D1 single-text probe predicting "is derived" (document-type signal, neutralized by the cell design); D2 probe predicting the generator family from a single text; D3 FPR on same-generator versus cross-generator independent pairs; D4 unique-detail masking (§8.6); D5 recall by information-flow category; D6 bridge merge rate; D7 partition metrics and origin-count error; D8 recall by retention bin (fraction of the source's unique details retained, and number of invented facts, by exact match); D9 reference R1 (§7.4).
+D1 single-text probe predicting "is derived" (document-type signal, neutralized by the cell design); D2 probe predicting the generator family from a single text; D3 FPR on same-generator versus cross-generator independent pairs; D4 unique-detail masking (§8.6); D5 recall by ancestry category; D6 bridge merge rate; D7 partition metrics and origin-count error; D8 recall by retention bin (fraction of the source's unique details retained, and number of invented facts, by exact match); D9 reference R1 (§7.4).
 
 ---
 
 ## 7. Methods
 
 ### 7.1 Baselines — fixed now, before any result
+The baseline set 𝔅 = {B1, B2, B3, B4-tuned, B5-score} is **fixed at stage 1**. No baseline can be added after the stage-1 freeze or after the test; a baseline proposed later belongs to a later experiment and cannot enter criterion S-b.
+
 | ID | Baseline | Definition |
 |---|---|---|
 | B0 | Surface control | length ratio only; expected to fail; a control, never compared in S |
 | B1 | Token Jaccard | EP-001 implementation, unchanged, on the full text including the headline |
 | B2 | TF-IDF cosine | word unigrams and bigrams, IDF fitted on the dev split only |
 | B3 | Sentence-embedding cosine | one pinned open-source embedding model (name and version in the configuration); document vector = mean of its sentence vectors |
-| B4-faithful | corroborate-mcp `assess()`, unmodified | the original function run by Node at commit `1da5f99`, with inputs adapted (§13.3). Native output only: `n_independent_sources` and the cluster-size multiset. Used for the **origin-count** metric (§8.5), never converted into pairwise scores |
-| B4-core | corroborate-mcp clustering loop with membership exposed | the original `normTitle`, `jaccard`, `coreTokens` and `relevance` imported from the original `text.js`; the clustering loop of `engine.js` lines 52–58 reproduced verbatim in a harness that returns cluster membership; conformance-tested against B4-faithful (§13.3). Used for co-membership and partition metrics at its native threshold 0.55 |
-| B4-tuned | B4-core, relevance gate off, threshold swept | same clustering rule, threshold chosen on dev as the setting with the highest recall_w subject to FPR_w ≤ 10%; the setting sequence is the threshold grid. Reported separately; never presented as corroborate-mcp |
-| B5-score | Simple LLM judge, scored | one direct prompt, fixed wording, local open model (§7.3) |
+| B4-faithful | corroborate-mcp `assess()`, unmodified | the original function run by Node at commit `1da5f99`, once per permutation (§13.4), with inputs adapted (§13.3). Native output only: `n_independent_sources` and the cluster-size multiset. Used for the **origin-count** metric (§8.5), **never** converted into pairwise scores |
+| B4-core | corroborate-mcp clustering loop with membership exposed | the original `normTitle`, `jaccard`, `coreTokens` and `relevance` imported from the original `text.js`; the clustering loop of `engine.js` lines 52–58 reproduced verbatim in a harness that returns cluster membership; conformance-tested against B4-faithful (§13.3). Native threshold 0.55. Pairwise metrics use the **EP-002 evaluation reduction ER-B4** (§13.4), which is not a corroborate-mcp behaviour |
+| B4-tuned | B4-core, relevance gate off, threshold swept | same clustering rule, with the Jaccard threshold τ taken from a **pre-registered grid {0.05, 0.10, …, 0.95}**; ER-B4 with θ = 0.50; the operating point is the setting with the highest recall_w subject to FPR_w ≤ 10% on dev. Reported separately; never presented as corroborate-mcp |
+| B5-score | Simple LLM judge, scored | one direct prompt, one pinned local model, log-odds score (§7.3) |
 | B5-verdict | Simple LLM judge, raw verdict | the same prompt answered yes / no / uncertain; qualitative kill-test form (§7.3) |
 
 Thresholds for B1, B2, B3, B5-score and the candidate are chosen on the **dev split**: the **lowest cutoff** at which FPR_w ≤ 0.10, then frozen. B4-faithful and B4-core use their original threshold 0.55 and are never tuned.
@@ -272,35 +299,64 @@ Thresholds for B1, B2, B3, B5-score and the candidate are chosen on the **dev sp
 ### 7.2 Candidate methods — explored on dev only, none assumed
 Candidates may be: semantic similarity variants; claim overlap; entity/event overlap; unique-detail overlap; structured LLM-based signals; combinations. Rules:
 
-1. **At most K = 10 variants** in total for the candidate family on the dev split, counted jointly across all candidate designs. The same K = 10 applies to every other family that requires tuning (B5: prompt variants). B1, B3 and B4 have no tunable variants; B2 and B3 configurations are fixed in §7.1. A threshold choice is not a variant. The 3 prompt paraphrases of §8.7 are written before exploration and do not count.
+1. **At most K = 10 variants** in total for the candidate family on the dev split, counted jointly across all candidate designs. The same K = 10 applies to every other family that requires tuning (B5: prompt variants). B1 has no variants; B2 and B3 configurations are fixed in §7.1; B4-tuned's threshold grid is pre-registered and is not a set of variants. A threshold choice is not a variant. The prompt paraphrases of §8.7 do not count.
 2. **Every variant tried is recorded** (design, hash, dev result) in a versioned variant ledger. **After the freeze no further variant is allowed.**
-3. A variant that learns parameters from labelled dev pairs is scored by event-grouped cross-validation on dev (K_folds = 5, repeated 10 times, as for O1) and then refit on all dev data; its in-sample dev score is never used for selection.
-4. **One primary candidate** is selected on dev: the variant with the highest recall_w at FPR_w = 10% (out-of-fold where applicable); ties go to the cheaper variant. It is frozen — together with its threshold, prompts, features and parameters — with a git tag and a content hash.
-5. Other candidates are **secondary**: they may be evaluated once on test and reported, but **cannot declare success**. If a secondary candidate would have succeeded where the primary did not, the consequence is a new pre-registered round, not a success.
+3. A variant that learns parameters from labelled dev pairs is scored by event-grouped cross-validation on dev (5 folds, repeated 10 times, as for O1) and then refit on all dev data; its in-sample dev score is never used for selection.
+4. **Selection rule (frozen at stage 1, before any dev event exists).** **One primary candidate** is selected on dev: the variant with the highest recall_w at FPR_w = 10% (out-of-fold where applicable); ties go to the cheaper variant. It is frozen — together with its threshold, prompts, features and parameters — with a git tag and a content hash. Selection uses the dev split only.
+5. The test split is evaluated **once**. Other candidates are **secondary**: they may be evaluated once on test and reported, but **cannot declare success and can never be promoted to primary after the test has been seen**. If a secondary candidate would have succeeded where the primary did not, the consequence is a new pre-registered round, not a success.
+6. The baselines are calibrated on the current dev **before** candidate exploration begins and are frozen (tag `ep002-baselines`); candidates are explored afterwards. No candidate, variant or exploratory design enters any baseline-based quantity (§7.4, C11).
 
 ### 7.3 B5 in detail
-- **Prompt (symmetric).** "Do these two texts originate from a common source text — that is, is one derived from the other, or are both derived from a third text? Answer yes or no." Three pre-written paraphrases of the same question are fixed before exploration. (The earlier "was B produced using A?" question is directional and cannot express the sibling case.)
-- **B5-score.** Score = log P("yes") − log P("no") of the first answer token, from the local model. If the runtime does not expose token log-probabilities, the fallback score is the fraction of "yes" over 8 samples at a fixed non-zero temperature; the stage-1 pilot (§10.8) must verify which of the two is available. "uncertain" is not an option in this form.
-- **Pair direction.** Each pair is scored in both orders and the two scores are averaged; order is seeded.
-- **B5-verdict.** The three-way answer with the same prompt; "uncertain" counts as "not dependent" (conservative for FPR); the opposite mapping is reported alongside. No threshold is applicable; it is a qualitative kill test, not an input of the statistical comparison.
-- **Same input as all methods.** The same two texts, with headlines, and the same token limit.
-- **Model.** One pinned local open-weight model (name, version, quantization in the configuration). If the candidate is LLM-based it uses the same model, for parity.
-- **Tuning budget.** Up to K = 10 prompt variants on dev, logged, as for the candidate.
-- **If B5 cannot be turned into a comparable score without giving it an artificial advantage** it is declared so, remains a qualitative kill test, and the comparison S-b is evaluated against the other baselines only.
 
-### 7.4 Oracle O1 and reference R1 (dev only)
-**Purpose:** a ceiling for what is identifiable from fact content, so that "no improvement" is not misread as a method failure when the task is not identifiable. The oracle is **never evaluated on the test split, and is never used to select or to evaluate anything on test**.
+**Model record (frozen at stage 1).** One open-weight instruction-tuned local model, identified by a record: family, parameter count, checkpoint identifier and content hash, quantization, runtime name and version, tokenizer hash, chat-template hash. The identity cannot be fixed in this document because it depends on the stage-1 pilot (hardware, token log-probability access); it is frozen at stage 1. If the candidate is LLM-based it uses the same record.
 
-- **O1 features** (fixed list, computed by exact match of fictional tokens, none using wording): Jaccard of the sets of fact IDs present; number of shared unique details; number of unique details in the union; agreement in the order of shared facts (Kendall tau); number of shared idiosyncratic errors.
+**Verbalization V0 (exact template).** One user message, no system message:
+
+```
+Text 1:
+{TEXT_1}
+
+Text 2:
+{TEXT_2}
+
+Question: Do these two texts originate from a common source text — that is, is one of them derived from the other, or are both derived from a third text? Answer with exactly one word: Yes or No.
+Answer:
+```
+
+The model's answer starts immediately after the chat template's generation prompt. {TEXT_i} is the complete text including the headline.
+
+**Token scoring.**
+- Take the logits at the **first generated position**, apply a softmax at temperature 1 with **no** top-k, top-p, repetition penalty or other sampling transformation.
+- T_yes = the set of all **single-token** surface forms of "Yes", "yes", "YES", with and without a leading space, in the model's tokenizer; T_no likewise for "No", "no", "NO". Both sets are listed from the tokenizer at stage 1 and frozen. A model for which "Yes" or "No" has no single-token surface form is **ineligible**.
+- p_yes = Σ over T_yes of the token probabilities; p_no likewise. **Score s = ln p_yes − ln p_no.** No other normalization is applied; yes and no are single-token events, so no length normalization is needed.
+- **Coverage check (dev):** the mean of p_yes + p_no over dev pairs must be ≥ 0.90, otherwise the model is ineligible.
+- **Symmetry:** every pair is scored in both orders and s_sym = (s(T1, T2) + s(T2, T1)) / 2. No order seed is needed.
+- **Use of the score:** the score is used **only to order pairs**. The comparison is made at equal FPR on each method's own ordering, so no comparability of score scales across models or tokenizations is required or claimed. Ties at a cutoff are included or excluded as a group.
+
+**Tuning budget.** Up to K = 10 prompt variants (wording and delimiters, always keeping the one-word Yes/No answer), logged; the variant with the highest dev recall_w at FPR_w = 10% is the main prompt.
+
+**B5-verdict.** The same prompt answered in three values yes / no / uncertain (the "uncertain" option added to the instruction); "uncertain" counts as "not dependent" (conservative for FPR); the opposite mapping is reported alongside. No threshold applies. It is a qualitative kill test and not an input of the statistical comparison.
+
+**Same input as all methods.** The same two texts, with headlines, and the same token limit.
+
+**If B5-score is unavailable** — no eligible local model, token log-probabilities not exposed, or the coverage check fails: there is **no sampling-based fallback in the quantitative comparison**. B5-score is declared **unavailable**, B5-verdict remains the qualitative test, and §9.6 applies.
+
+### 7.4 O1 and R1 — dataset-specific diagnostic upper bounds (dev only)
+**What they are.** O1 uses exact-match fact tokens, the event schema and features built for this dataset. It is a **dataset-specific diagnostic upper bound** on what can be identified from fact content in this benchmark. It is **not** a universal oracle of identifiability. It is used only as a necessary-condition check (C11) and is **never evaluated on the test split, never used to select or evaluate anything on test, and never given the results of any other method**.
+
+**Fully pre-specified (frozen at stage 1, before the first dev event is generated):**
+- **Features** (fixed list, computed by exact match of fictional tokens, none using wording): Jaccard of the sets of fact IDs present; number of shared unique details; number of unique details in the union; agreement in the order of shared facts (Kendall tau); number of shared idiosyncratic errors.
 - **Model:** logistic regression, L2 regularization with fixed strength, standardized features; a separate model per cell. No hyperparameter search.
-- **Validation:** event-grouped cross-validation on dev (5 folds, repeated 10 times with different fold assignments); every pair's score is the mean of its out-of-fold scores, so no prediction is made on an event that contributed to training.
-- **Operating point:** on the pooled out-of-fold scores, the lowest cutoff with FPR_w ≤ 0.10. (A single threshold parameter fitted on dev, as for the baselines; the residual optimism is symmetric and, for the baselines, favours them, which makes C11 conservative.)
-- **recall_w and FPR_w** as in §5.5, event-macro averaged; the bootstrap CI is over events on the out-of-fold scores (it ignores training variability; stated).
-- **C11:** headroom = recall_w(O1) − max over {B1, B2, B3, B4-tuned, B5-score} of recall_w at FPR_w = 10% on dev. Pass if the point estimate is ≥ 0.20 (the effect of interest). A failure ends the experiment (§5.6).
-- **Reference R1:** the same procedure with all text features of the pair. R1 is **not** an oracle (it can learn dataset artefacts) and has no gate role; if R1 is far above O1, the signal beyond fact content is flagged for review.
+- **Predictions:** all predictions are out-of-fold, from event-grouped cross-validation on dev (5 folds, repeated 10 times with different fold assignments); the score of a pair is the mean of its out-of-fold scores, so no prediction is made on an event that contributed to training.
+- **Threshold rule:** on the pooled out-of-fold scores, the lowest cutoff with FPR_w ≤ 0.10 (a single threshold parameter fitted on dev, as for the baselines; the residual optimism is symmetric and, for the baselines, favours them, which makes C11 conservative).
+- recall_w and FPR_w as in §5.5, event-macro averaged; the bootstrap CI is over events on the out-of-fold scores (it ignores training variability; stated).
+
+**C11.** headroom = recall_w(O1) − max over the **frozen baselines** {B1, B2, B3, B4-tuned, B5-score} of recall_w at FPR_w = 10% on dev. The maximum is taken **only over baselines that are pre-specified in §7.1, whose tuning budget (K = 10 for B5) was spent and frozen before C11 is computed (tag `ep002-baselines`)**, and never over a candidate, a candidate variant or any design explored after the baselines were frozen. Pass if the point estimate is ≥ 0.20 (the effect of interest). A failure ends the experiment (§5.6).
+
+**Reference R1.** The same procedure with all text features of the pair. R1 is **not** an upper bound on anything (it can learn dataset artefacts) and has no gate role; if R1 is far above O1, the signal beyond fact content is flagged for review.
 
 ### 7.5 Score purity (C13)
-Pairwise methods must produce a pair's score from the two texts and from parameters frozen on dev only. Within-event rank or z-score normalization, corpus statistics fitted on test documents, and any use of other documents of the test event are forbidden. Set-level methods are allowed only if declared before the test; B4-faithful and B4-core are the declared exceptions, and their comparability is limited accordingly (§13.4).
+Pairwise methods must produce a pair's score from the two texts and from parameters frozen on dev only. Within-event rank or z-score normalization, corpus statistics fitted on test documents, and any use of other documents of the test event are forbidden. Set-level methods are allowed only if declared before the test; B4-faithful and B4-core are the declared exceptions, and their comparability is limited accordingly (§13.5).
 
 ### 7.6 Frontier exception (external-validity control)
 A single frontier model is used for one control, on a **fixed subset of the test split**: the first min(10, N_test) test events, in the seeded generation order, **defined before the test is generated**. It runs B5-score and, if the primary candidate is LLM-based, the candidate with the frontier model substituted, without any change of prompt or threshold. It is **reported separately**. It does not enter the statistical test, cannot change any threshold, the candidate, the dataset or any criterion, and **a frontier result cannot turn a failed experiment into a success**. It is required to be reported before a success is used to authorise EP-003.
@@ -313,45 +369,59 @@ A single frontier model is used for one control, on a **fixed subset of the test
 Same-event pairs of the **test** split in the cells of §5.5 (PC1–PC6), with the exclusions of §5.6. Per-event recall_w and FPR_w are computed as in §5.5 and averaged with equal weight over events.
 
 ### 8.2 Operating points
-- **Primary comparison — equal FPR.** All methods that produce an ordered family of settings (a score or a threshold grid) are compared at the operating point **FPR_w = 10%** on the test split: the setting with the highest recall_w subject to FPR_w ≤ 0.10. This uses the test labels only to place each method at the same false-positive rate, which is an evaluation-time matching symmetric across methods; no parameter of any method is changed.
-- **Frozen-threshold analysis — safety guard.** Each method is also evaluated at the threshold frozen on dev. For the candidate this yields the guard of S-c. Recall differences at frozen thresholds are reported as a secondary analysis.
-- Sensitivity: results are also reported at FPR_w = 5% and 20%.
+| Quantity | Role | Where used |
+|---|---|---|
+| **FPR_w = 10%**, equal across methods | **Main operating point**: the scientific comparison is made here | S-b, S-d, K1–K3 |
+| **FPR_w ≤ 15%** at the dev-frozen threshold | **Maximum guard** (10% plus a 5-point tolerance); a safety check, not the comparison | S-c, K3 |
+| +5 points on N_k, at the equal-FPR point | non-inferiority margin on the hard negatives | S-d, K3 |
+| FPR_w = 5% and 20% | descriptive sensitivity | reported only |
+
+- **Primary comparison — equal FPR.** All methods that produce an ordered family of settings (a score or a threshold grid) are compared at FPR_w = 10% on the test split: the setting with the highest recall_w subject to FPR_w ≤ 0.10. This uses the test labels only to place each method at the same false-positive rate, an evaluation-time matching symmetric across methods; no parameter of any method is changed.
+- **Frozen-threshold analysis — guard.** Each method is also evaluated at the threshold frozen on dev. For the candidate this yields the guard of S-c. Recall differences at frozen thresholds are reported as a secondary analysis.
 - B4-core at its native 0.55, B4-faithful and B5-verdict have no setting sequence; they are reported at their native point and are not part of the equal-FPR comparison.
 
 ### 8.3 Reported for every method
-Recall_w, FPR_w, precision and F1 (these depend on the constructed prevalence and are not transferable to the real world); recall for every positive class PC1–PC4 and for the categories DIRECT, INDIRECT, SHARED_ORIGIN; FPR for PC5, PC6 and PC7; FPR for each N_k (k = H, I1, I2, I3); the diagnostic classes PC8–PC11; cross-event pairs in a separate table.
+Recall_w, FPR_w, precision and F1 (these depend on the constructed prevalence and are not transferable to the real world); recall for every positive class PC1–PC4 and for the ancestry categories; FPR for PC5, PC6 and PC7; FPR for each N_k (k = H, I1, I2, I3); the diagnostic classes PC8–PC11; cross-event pairs in a separate table.
 
 ### 8.4 Uncertainty and paired bootstrap
-- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference, and **the equal-FPR operating point is recomputed inside every replicate** for each method.
+- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference, and **the equal-FPR operating point is recomputed inside every replicate** for each method. LB and UB denote the 2.5th and 97.5th percentiles.
 - Non-deterministic methods are run 5 times; the per-pair score is the mean of the 5 runs, and the range of the metrics is reported.
 
 ### 8.5 Partition metrics and origin count
-Within S the truth is a partition with 5 origins. Reported (D7): the **origin-count error** `n_pred − 5` (signed: positive means missed dependence) and its absolute value; B-cubed precision and recall; adjusted Rand index. B4-faithful provides the count natively. Every other method is reduced to a partition by one fixed rule: connected components of the graph of pairs it predicts dependent at its frozen-threshold operating point. The information lost in that reduction (one false positive can merge two clusters) is stated, and partition metrics are secondary.
+Within S the truth is the partition of §3.3 with 5 origin blocks per event. Reported (D7): the **origin-count error** `n_pred − 5` (signed: positive means missed dependence) and its absolute value; B-cubed precision and recall; adjusted Rand index.
+- **B4-faithful** gives the count natively, once per permutation; the reported value is the mean over permutations, with the range and the fraction of permutations with the exact count.
+- **B4-core:** B-cubed and ARI are computed on **each actual partition** (one per permutation) and averaged; **no reduction is applied**.
+- **Every other method** is reduced to a partition by one fixed rule: connected components of the graph of pairs it predicts dependent at its frozen-threshold operating point. The information lost in that reduction (one false positive can merge two clusters) is stated. Partition metrics are secondary.
 
 ### 8.6 Diagnostics
-- **Information-flow categories (D5):** recall of the primary detector for DIRECT, INDIRECT and SHARED_ORIGIN pairs; no pass/fail.
-- **Bridge (D6):** on the diagnostic classes, how often a method predicts (ORIG, P) dependent although both are ancestors of F.
+- **Ancestry (D5):** recall of the primary detector for DIRECT, INDIRECT and SHARED_ORIGIN_NO_DIRECT_FLOW pairs; no pass/fail.
+- **Bridge (D6):** on the diagnostic classes PC10–PC11, how often a method predicts (ORIG, P) dependent although both are ancestors of F and are independent roots.
 - **Unique-detail masking (D4):** the frozen primary candidate and the frozen baselines are evaluated on a deterministic masked copy of the test split in which every token of a fact designated as a unique detail (exact fictional string) is replaced by a neutral placeholder. **No pass/fail role.** It shows whether a result depends artificially on the way unique details are built into the dataset. No parameter is re-tuned.
 - **Retention (D8):** recall per bin of retained unique details.
 
 ### 8.7 Prompt robustness
-Every LLM-based method (candidate if LLM-based, and B5) is run with its main prompt and with 3 pre-written paraphrases of it. Thresholds are re-fitted on dev for each paraphrase and frozen. Success criteria are evaluated **separately for each of the four formulations** and success requires all four (§9). Prompts are written before exploration.
+Every LLM-based method (the candidate if LLM-based, and B5) is run with its main prompt and with 3 paraphrases of it. The paraphrases are written **once, at the freeze, before the test split exists**, as rewordings of the selected prompt's instruction sentence; **all three are used, none is selected, dropped or replaced after being written**. Thresholds are re-fitted on dev for each paraphrase and frozen. Success criteria are evaluated **separately for each of the four formulations** and success requires all four (§9).
 
 ---
 
 ## 9. Success, kill and inconclusive criteria — fixed before the experiment
 
-All statements refer to the **primary candidate** P and to the baseline set 𝔅 = {B1, B2, B3, B4-tuned, B5-score}. Δ_X = recall_w(P) − recall_w(X) at equal FPR_w = 10% on test, with the paired event bootstrap of §8.4; LB and UB are the 2.5th and 97.5th percentiles.
+All statements refer to the **primary candidate** P and to the baseline set 𝔅 of §7.1. Δ_X = recall_w(P) − recall_w(X) at equal FPR_w = 10% on test, with the paired event bootstrap of §8.4.
+
+### 9.0 Statistical status of the intervals
+The 95% bootstrap intervals are **descriptive intervals used inside a pre-registered decision rule**. EP-002 does **not** present them as hypothesis tests with control of the family-wise error rate, and no multiplicity-adjusted p-values or simultaneous-inference claims are made. The rule combines many comparisons (up to 5 baselines, 3 hard-negative sets, up to 4 prompt formulations): SUCCESS is an **intersection** of per-comparison conditions and KILL is a **union** (any single demonstrated failure). The operating characteristics of the rule — the probability of SUCCESS, of KILL and of INCONCLUSIVE under stated scenarios — are computed by the simulation of §10 and reported, but are **not** gates.
+
+The decision is fully pre-registered: **one primary candidate**; selection **on dev only** by a rule frozen at stage 1; the test evaluated **once**; secondary candidates never promotable; B5 and B4-tuned with pre-registered tuning budgets; no baseline added after the stage-1 freeze or after the test.
 
 ### 9.1 SUCCESS (H1 supported on synthetic data) — all must hold
-- **S-a Validity.** Checks C1–C15 passed (C11 = headroom, on dev).
-- **S-b Recall (criterion S1).** For **every** X ∈ 𝔅: Δ̂_X ≥ 0.20 **and** LB(Δ_X) > 0. The value 0.20 is the minimum effect of interest and is frozen before the dataset is generated.
+- **S-a Validity.** Checks C1–C16 passed (C11 = headroom, on dev).
+- **S-b Recall (criterion S1).** For **every** X ∈ 𝔅 (𝔅 as available, §9.6): Δ̂_X ≥ 0.20 **and** LB(Δ_X) > 0. The value 0.20 is the minimum effect of interest and is frozen before the dataset is generated.
 - **S-c FPR guard.** FPR_w(P) at its **dev-frozen threshold** on test is ≤ 0.15 (the operating point plus a 5-point tolerance). This is a safety guard; the scientific comparison is the equal-FPR comparison of S-b.
 - **S-d Hard negatives (non-inferiority).** For each k ∈ {I1, I2, I3}, at the equal-FPR operating point, UB of the paired difference FPR_k(P) − FPR_k(R*) is ≤ +0.05, where R* is the baseline with the highest recall_w at equal FPR on dev, designated on dev before the freeze.
 - **S-e Robustness.** S-b to S-d hold for each of the four prompt formulations (§8.7), when P or B5 is LLM-based.
 - **S-f Cost.** Measured on a fixed random sample of 200 dev pairs: ≤ 2 seconds per pair on a single consumer machine, **or** ≤ USD 0.01 per pair through an API.
 
-### 9.2 KILL — any one is sufficient (and N_test meets the power rule, §10.6)
+### 9.2 KILL — any one is sufficient (and N_test meets the power rule, §10)
 Each kill criterion is the demonstrated opposite of a success criterion, so that an uncertain result is inconclusive rather than a kill.
 - **K1 No margin over a similarity baseline.** For some X ∈ {B1, B2, B3, B4-tuned}: UB(Δ_X) < 0.20.
 - **K2 A prompt is enough.** For B5-score: UB(Δ_B5) < 0.20. (The local-model caveat of §14 applies.)
@@ -368,36 +438,83 @@ Removed or merged relative to v0.2: the v0.2 criteria "B4 or another open-source
 Neither 9.1 nor 9.2 is met within the time box (§15): reported as inconclusive with the reason. No criterion is relaxed, replaced or re-weighted after any result is seen.
 
 ### 9.4 INCONCLUSIVE-UNDERPOWERED
-If the required N_test of §10.6 exceeds the operational limit, the outcome is labelled INCONCLUSIVE-UNDERPOWERED **whatever the observed statistics are**. Descriptive results may be reported, cannot authorise EP-003, and cannot trigger K1–K5. Criteria K6–K8 do not depend on power and remain in force. **No criterion is modified.**
+If the algorithm of §10.5 returns no N_test within the operational limit, the outcome is labelled INCONCLUSIVE-UNDERPOWERED **whatever the observed statistics are**. Descriptive results may be reported, cannot authorise EP-003, and cannot trigger K1–K5. Criteria K6–K8 do not depend on power and remain in force. **No criterion is modified.**
 
 ### 9.5 What cannot change an outcome
-The frontier control (§7.6), the unique-detail masking (D4), the information-flow diagnostics (D5), the secondary candidates, the secondary analysis at frozen thresholds, and every diagnostic of §6.
+The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagnostics (D5), the secondary candidates, the secondary analysis at frozen thresholds, the sensitivity analyses of ER-B4 (§13.4) and every diagnostic of §6.
+
+### 9.6 If B5-score is unavailable
+(1) S-b is evaluated against the baselines that are available; (2) K2 cannot be evaluated; (3) B5-verdict is reported as a qualitative result; (4) the outcome label carries the suffix "(B5 not quantitatively compared)" and the project owner must review the B5-verdict result before any success is used to authorise EP-003. The fallback is not forced into the quantitative comparison.
 
 ---
 
 ## 10. Sample size and power
 
 ### 10.1 Principles
-N is not chosen "because it seems enough" and is never chosen after any test result. The decision rule S-b to S-d is a **joint** rule: its power is lower than that of each component and is simulated, not multiplied by hand. The observed effect of the candidate on dev is **never** used in a sample-size computation (it is inflated by selection).
+N is not chosen "because it seems enough" and is never chosen after any test result. The decision rule S-b to S-d is a **joint** rule: its power is lower than that of each component and is **simulated by a deterministic algorithm (§10.5), not multiplied by hand**. The observed effect of the candidate on dev is **never** an input of the algorithm.
 
-### 10.2 Stage 1 — before any dev event is generated
-Frozen with a git tag (`ep002-stage1`): the generative parameters of §5.2, α = 0.05 (two-sided CI 95%), target joint power 0.80, minimum effect of interest 0.20, the design alternative for the effect, the FPR tolerance and margin, the grid of §10.5, N_dev, the operational limit N_max, the rules of §10.6, and the constants of §11. The stage-1 planning step also records the planned N_test under each column of the grid and flags if the conservative column would exceed N_max − N_dev.
+### 10.2 Pre-registered at stage 1 (before any dev event is generated)
+Frozen with a git tag (`ep002-stage1`):
+- the generative parameters of §5.2; the selection rule of §7.2.4; the baseline set 𝔅;
+- α = 0.05, i.e. two-sided 95% percentile intervals (LB = 2.5th, UB = 97.5th percentile);
+- target joint power π* = 0.80; minimum effect of interest 0.20; guard 0.15; non-inferiority margin 0.05;
+- the design alternative: Δ_design = 0.25 for every X ∈ 𝔅, FPR offset on N_k of +0.02, mean frozen-threshold FPR_w of 0.10;
+- the **grid** of §10.6 (conservative / moderate / optimistic) and the **floors and caps** of the binding rule: σ_Δ ≥ 0.15, σ_f ≥ 0.10, σ_g ≥ 0.05, ρ_crit ∈ [0, 0.30], ρ_form ∈ [0, 0.50];
+- N_dev (≥ 20), the operational limit N_max, N_cap = N_max − N_dev;
+- the simulation constants: M = 2000 simulated trials, B_sim = 1000 bootstrap resamples per trial, the grid of N (10, 15, 20, … up to N_cap), the seed;
+- the binding rule of §10.5.
 
-### 10.3 Stage 2 — after the freeze of the primary candidate, before the test is generated
-N_test is computed by the rule of §10.6 using quantities **estimated on dev** and quantities that **stay pre-registered**:
+### 10.3 Estimated from dev, after the freeze of the candidate (stage 2)
+Exactly these quantities, and no others, may be estimated from the dev split:
+- **σ̂_Δ,X** — the sample standard deviation (n − 1) over dev events of the per-event recall_w difference between P and each X, at the equal-FPR operating point (out-of-fold scores for supervised variants);
+- **σ̂_f,k** — the same for the per-event paired FPR difference on N_k, for each k;
+- **σ̂_g** — the same for the per-event FPR_w of P at its frozen threshold;
+- **ρ̂_crit** — the mean of the off-diagonal sample correlations, across dev events, between statistics of **different** types within the same prompt formulation;
+- **ρ̂_form** — the same between **formulations** of the same statistic (only if P or B5 is LLM-based).
 
-| Estimated from dev at stage 2 | Pre-registered (never taken from dev) |
-|---|---|
-| σ̂_Δ,X: SD over dev events of the per-event recall_w difference between P and each X ∈ 𝔅, at equal FPR (out-of-fold scores for supervised variants) | α, target power, minimum effect of interest |
-| σ̂_f: SD over dev events of the per-event paired FPR difference on N_k | design effect Δ_design = 0.25 (conservative column) |
-| ρ̂_crit: mean correlation across events between the per-event statistics of the different criteria | true FPR offset on N_k = +0.02 (conservative column) |
-| σ̂_g: SD over dev events of per-event FPR_w at the frozen threshold | the joint decision rule and the bootstrap procedure |
+**Not usable, ever:** the observed mean effect of P on dev (the mean of any Δ), the observed mean FPR on dev, and any dev-based selection of an assumption for being favourable. The algorithm takes only standard deviations and correlations from dev. If an observed standard deviation is below its floor, **the floor is used**.
 
-### 10.4 What the simulation does
-Simulate N_test events by drawing per-event vectors (one recall difference per X ∈ 𝔅, one FPR difference per k, one frozen-threshold FPR_w) from a multivariate normal with means set to the design alternative, SDs and correlation as in §10.3, then apply the **actual** decision rule (paired bootstrap, S-b to S-d) to the simulated events, 2000 simulation replicates, and report the fraction of replicates in which all criteria hold. The rule has a built-in cap: because S-b requires Δ̂ ≥ 0.20, a true effect of exactly 0.20 gives at most 50% power on that criterion; therefore the design effect is above 0.20.
+### 10.4 Statistics and model
+- J = {1} if neither P nor B5 is LLM-based, otherwise J = {1, 2, 3, 4} (the four formulations).
+- Statistic types: d_X for each available X ∈ 𝔅 (recall difference), f_k for k ∈ {I1, I2, I3} (paired FPR difference versus R*), g (FPR_w of P at its frozen threshold). With n_𝔅 = |𝔅 available| the number of types is T = n_𝔅 + 3 + 1, and the number of statistics is m = T·|J|.
+- Per-event vector z_e ∈ ℝ^m is drawn from **N(μ, Σ)** (a normal approximation, declared as an arbitrary assumption: it ignores the boundedness of the statistics).
+- **Means:** μ = Δ_design for every d_X; μ = +0.02 for every f_k; μ = 0.10 for g. These come from §10.2, never from dev.
+- **Standard deviations:** σ_Δ,used = max(max_X σ̂_Δ,X, 0.15) for every d_X; σ_f,used = max(max_k σ̂_f,k, 0.10) for every f_k; σ_g,used = max(σ̂_g, 0.05).
+- **Correlations:** ρ_crit,used = min(max(ρ̂_crit, 0), 0.30); ρ_form,used = min(max(ρ̂_form, 0), 0.50) (if |J| = 1 the formulation factor is absent). Σ = D (C_crit ⊗ C_form) D, with D = diag(σ), C_crit the T×T equicorrelation matrix with ρ_crit,used, C_form the |J|×|J| equicorrelation matrix with ρ_form,used. Both are positive definite for non-negative correlations, hence so is their Kronecker product.
 
-### 10.5 Sensitivity grid
-The values below are **arbitrary assumptions about unknowns** — EP-001 provides no estimate of between-event variance — and are declared as such. The columns are a sensitivity analysis, not a choice of the most convenient N.
+### 10.5 Algorithm P (deterministic)
+```
+INPUT   pre-registered constants (§10.2); dev-estimated σ̂, ρ̂ (§10.3); N_cap; seed s
+STEP 1  compute μ, σ_used, ρ_used, Σ as in §10.4.
+STEP 2  for N in the grid {10, 15, 20, ..., N_cap}:
+          for t = 1..M:
+            draw N per-event vectors z_1..z_N ~ N(μ, Σ) using the pseudo-random stream
+            seeded by (s, N, t);
+            for b = 1..B_sim: draw N event indices with replacement (stream seeded by
+              (s, N, t, b)); the SAME indices are used for every statistic
+              (paired); store the mean of each statistic over the resample;
+            for each statistic: mean_hat = mean over the N events; LB, UB = 2.5th and
+              97.5th percentile (nearest-rank) of the B_sim resample means;
+            SUCCESS_t = 1 iff ALL of:
+              for every d_X, j:  mean_hat >= 0.20  AND  LB > 0          (S-b)
+              for g (every j):   mean_hat <= 0.15                       (S-c)
+              for every f_k, j:  UB <= 0.05                             (S-d)
+          pi_hat(N) = (1/M) * sum_t SUCCESS_t                           (joint power)
+STEP 3  N_test = the smallest N in the grid such that pi_hat(N) >= 0.80 AND, if N+5 <= N_cap,
+        pi_hat(N+5) >= 0.80.
+        If no such N exists: N_test = NONE.
+STEP 4  if N_test = NONE:  outcome label = INCONCLUSIVE-UNDERPOWERED (§9.4); criteria unchanged.
+        else:               generate N_test test events (§5.7, §15).
+STEP 5  (reporting, not a gate) at N = N_test, or at N_cap if N_test = NONE, report pi_hat
+        and the simulated probabilities of KILL (K1, K2, K3 as defined in §9.2) and of
+        INCONCLUSIVE, under (i) the design alternative and (ii) mu_d = 0.20 for every d_X.
+OUTPUT  N_test (or NONE) and the reporting table. With the same inputs and seed the output
+        is bit-for-bit reproducible.
+```
+Criteria S-a, S-e (it enters through J), S-f and K4 are not simulated beyond what J implies: validity checks are assumed to pass, cost is deterministic, and K4 is not modelled (declared).
+
+### 10.6 Sensitivity grid (planning at stage 1; not binding)
+The values below are **arbitrary assumptions about unknowns** — EP-001 provides no estimate of between-event variance — and are declared as such. At stage 1 Algorithm P is run once per column, with the column's values replacing the dev estimates, to record the planned N_test per column and to flag whether the conservative column exceeds N_cap. The columns are a sensitivity analysis, not a choice of the most convenient N. The binding run (stage 2) uses §10.3–10.5.
 
 | Parameter | Conservative | Moderate | Optimistic |
 |---|---|---|---|
@@ -405,21 +522,17 @@ The values below are **arbitrary assumptions about unknowns** — EP-001 provide
 | σ_Δ: between-event SD of the per-event recall difference | 0.20 | 0.15 | 0.10 |
 | σ_f: between-event SD of the per-event paired FPR difference on N_k | 0.15 | 0.10 | 0.07 |
 | True FPR offset of P versus R* on N_k | +0.02 | +0.01 | 0 |
-| ρ_crit: correlation between the statistics of different criteria | 0 | 0.3 | 0.6 |
+| ρ_crit | 0 | 0.3 | 0.6 |
 
-A back-of-envelope check (illustrative only, to be replaced by the simulation): for the non-inferiority criterion S-d alone, n ≈ (1.96·σ_f / (0.05 − offset))². With σ_f = 0.10 and offset 0, about 15 events; with σ_f = 0.15 and offset +0.02, about 96. The criterion on hard negatives is likely to be the one that fixes N, not the recall criterion.
+A back-of-envelope check (illustrative only, to be replaced by Algorithm P): for the non-inferiority criterion S-d alone, n ≈ (1.96·σ_f / (0.05 − offset))². With σ_f = 0.10 and offset 0, about 15 events; with σ_f = 0.15 and offset +0.02, about 96. The criterion on hard negatives is likely to be the one that fixes N, not the recall criterion. Because S-b requires Δ̂ ≥ 0.20, a true effect of exactly 0.20 gives at most 50% power on that criterion; the design effect is therefore above 0.20.
 
-### 10.6 Rule for N, and the operational limit
-- **Binding rule.** N_test = the smallest N for which the simulated **joint power is ≥ 0.80** with Δ_design = 0.25, offset = +0.02, σ_Δ,used = max(σ̂_Δ, 0.15), σ_f,used = max(σ̂_f, 0.10), σ_g,used = σ̂_g, ρ_used = min(ρ̂_crit, 0.3).
-- **N_dev ≥ 20 events** (minimum), set at stage 1.
+### 10.7 N_dev, N_max and the outcome
+- **N_dev ≥ 20 events** (minimum), set at stage 1. With 56 primary negatives per event, 20 events give 1,120 negatives (an indicative standard error of about one point at FPR 10%, ignoring event clustering). N_dev is not raised after seeing any result.
 - **Operational limit N_max.** A resource limit on the total N_dev + N_test, **provisionally 100 events for planning**; it is **not** a methodological parameter. It is fixed from the timing measured in the pilot (§10.8) and frozen at stage 1. If 100 turns out to be insufficient it is reported as an operational limit.
-- **If N_test required > N_max − N_dev:** the outcome is INCONCLUSIVE-UNDERPOWERED (§9.4) and **no criterion is changed**.
-
-### 10.7 Dev size
-The dev split must yield enough negatives for threshold calibration: with 56 primary negatives per event, 20 events give 1,120 negatives (an indicative standard error of about one point at FPR 10%, ignoring event clustering). N_dev is not raised after seeing any result.
+- **If Algorithm P returns NONE:** the outcome is INCONCLUSIVE-UNDERPOWERED (§9.4) and **no criterion is changed**.
 
 ### 10.8 Pilot
-A pilot of 3–5 events, **burned** (they never enter dev or test), is used **only** to verify the pipeline, verify the context audit and the other mechanical checks, measure generation and scoring times, identify mechanical errors, and verify whether the local model exposes token log-probabilities. It is **not** used to estimate the effect of any candidate, and not used to estimate variance.
+A pilot of 3–5 events, **burned** (they never enter dev or test), is used **only** to verify the pipeline, verify the context audit and the other mechanical checks, measure generation and scoring times, identify mechanical errors, and verify B5 eligibility (token log-probability access, single-token Yes/No forms, coverage). It is **not** used to estimate the effect of any candidate, and not used to estimate variance.
 
 ---
 
@@ -437,21 +550,23 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | α = 0.05; CI 95% | yes | CONV | by convention | before dataset | no |
 | Target power 0.80 | yes | CONV | by convention | before dataset | no |
 | Bootstrap resamples 10,000, seed | yes | MAT (Monte Carlo precision) | partly | before test | resamples may increase, seed not |
-| Simulation replicates 2000 | yes | MAT | partly | stage 1 | may increase |
+| Simulation trials M = 2000; B_sim = 1000; N grid step 5 from 10; seed | yes | MAT (Monte Carlo precision) / MET | partly | stage 1 | no |
 | K = 10 variants per tuning family | yes | MET | yes | before dev exploration | no |
-| 3 prompt paraphrases | yes | MET | yes | before dev exploration | no |
+| 3 prompt paraphrases (written once, at the freeze) | yes | MET | yes | at the freeze, before the test is generated | no |
 | N_dev ≥ 20 | yes | MET (calibration precision) | partly | stage 1 | no |
-| N_test | yes | **MAT** (rule of §10.6) | no, given the inputs | stage 2, before test generation | no |
+| N_test | yes | **MAT** (output of Algorithm P) | no, given the inputs | stage 2, before test generation | no |
 | N_max (provisional 100) | yes | MET (resources) | yes | stage 1, after timing | no; reported if insufficient |
 | Pilot events 3–5 | yes | MET | yes | stage 1 | no |
 | Grid values (Δ_design, σ_Δ, σ_f, offset, ρ_crit) | yes | HYP about unknowns | **yes**, declared | stage 1 | no |
-| Floors σ_Δ ≥ 0.15, σ_f ≥ 0.10, ρ ≤ 0.3 in the binding rule | yes | MET (conservative direction) | yes | stage 1 | no |
+| Mean frozen-threshold FPR_w in the simulation 0.10 | yes | MAT (the operating point) | no | stage 1 | no |
+| Floors σ_Δ ≥ 0.15, σ_f ≥ 0.10, σ_g ≥ 0.05; caps ρ_crit ≤ 0.30, ρ_form ≤ 0.50 | yes | MET (conservative direction) | yes | stage 1 | no |
+| Normal approximation of per-event statistics | yes | MET | yes, declared | stage 1 | no |
 | Cell weights 9/25 and 16/25 | yes | **MAT** (positive counts per cell) | no | with the design | no |
 | Headroom threshold 0.20 (C11) | yes | **MAT** (necessary condition derived from the effect of interest) | no | with the design | no |
 | C6 rule "below best baseline + 0.20" | yes | MET (reuses the effect of interest) | partly | before dataset | no |
 | C7 difficulty floor recall_w ≥ 0.8 | yes | MET (inherited) | yes | before dataset | no |
-| C14 balance ≤ 0.05; strata ≥ 30% | yes | MET | yes (0 where exact) | before dataset | no |
-| Oracle parameters (5 folds, 10 repeats, L2 strength, feature list) | yes | MET | yes | before dev generation | no |
+| C14 balance ≤ 0.05; strata ≥ 30% (pair level) | yes | MET | yes (0 where exact) | before dataset | no |
+| Oracle parameters (5 folds, 10 repeats, L2 strength, feature list) | yes | MET | yes | stage 1 | no |
 | Context audit n-gram length 8 | yes | MET | yes | before dataset | no |
 | Exclusion limits 10% of documents per event, 10% of events | yes | MET (inherited) | yes | before dataset | no |
 | One regeneration of dev | yes | MET | yes | before dataset | no |
@@ -459,8 +574,10 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | Cost bounds 2 s or USD 0.01 per pair; timing sample of 200 pairs | yes | MET (judgement) | yes | before dataset | no |
 | Generative parameters (|K| = 8, |U_r| = 4, one error per root, length 150–250 words, summary ≤ 30%, light edit ≤ 10%, chain depth 2, style list) | yes | HYP (they set difficulty) | yes | before dev generation | only via §5.6 knobs |
 | Frontier subset: first 10 test events | yes | MET | yes | before test generation | no |
-| B5 fallback of 8 samples | only if no log-probs | MET | yes | stage 1 | no |
-| B4: 100 permutations; majority 50% | yes | MET | yes, harmless (negligible cost) | before dev | no |
+| B5: coverage ≥ 0.90; token sets T_yes / T_no; template V0 | yes | MET | partly | stage 1 | no |
+| B4-tuned threshold grid {0.05, …, 0.95} | yes | MET | yes | stage 1 | no |
+| ER-B4 reduction θ = 0.50 (sensitivity 0.25 and 0.75 descriptive, dev only) | yes | MET (EP-002 choice, not corroborate-mcp) | yes | stage 1 | no; the sensitivity does not select a value |
+| B4: 100 permutations | yes | MET | yes, harmless (negligible cost) | stage 1 | no |
 | B4 threshold 0.55 | yes | **EXT** (corroborate-mcp `SIM_THRESHOLD`) | no | verified at commit `1da5f99` | no |
 | Time box 2 weeks | yes | MET (resources) | yes | at approval | no |
 
@@ -495,9 +612,11 @@ Repository `chefcohen/corroborate-mcp`, commit `1da5f9933c15119bd8078ecdc25710df
 3. **Clustering** (lines 52–58): articles are processed in input order; each is compared with the **prototype token array of each existing cluster, which is the title tokens of the cluster's first member and is never updated**; it joins the first cluster in creation order with `jaccard(c.toks, toks) ≥ SIM_THRESHOLD`, otherwise it opens a new cluster. `SIM_THRESHOLD = 0.55`. Jaccard is computed on token **sets**; an empty set gives 0. The result therefore depends on **input order**.
 4. **Normalization** (`text.js`): lowercase, every character outside `a–z`, `0–9` and space replaced by a space, split on whitespace, stop words removed. Non-ASCII letters are destroyed.
 5. `n_independent_sources` is the number of clusters. Domains, the wire list (AP, Reuters, AFP, UPI), publication times, ages and engine agreement affect only notes and confidence; they do **not** affect which cluster an article joins.
-6. **`assess()` does not return cluster membership.** It returns the count, a truncated list of cluster representatives (earliest-dated item) and `echoed_by_n_domains` per representative.
+6. **`assess()` does not return cluster membership.** It returns the count, a list of cluster representatives (earliest-dated item) truncated to `max_sources`, and `echoed_by_n_domains` per representative.
 7. The pre-clustering deduplication by `domain + first 8 normalized title tokens` is in **`findSources`** (the network path, lines 17–25), **not** in `assess()`.
 8. README (FACT): "No LLM in the loop"; "English-language, headline-level"; no stance detection (6/6 distorted claims falsely CONFIRMED); "Independent rewrites of one wire story can occasionally slip clustering; distinct phrasings of one origin can occasionally count as two."
+
+**Direct verification of the statement "echoed_by_n_domains = cluster size when every domain is unique" (FACT, from the pinned code).** In `assess()`, after clustering, line 60 sets `c.domains = [...new Set(c.items.map(i => i.domain))]`, and each element of the returned `sources` is built in lines 107–116 from `clusters.slice(0, max_sources)` with the field `echoed_by_n_domains: c.domains.length`. `i.domain` is the `domain` field supplied by the caller. Therefore: **if every document is given a distinct `domain` value and `max_sources` is at least the number of clusters, then `echoed_by_n_domains` of each returned source equals the number of documents in its cluster.** The statement is **not** true without those two conditions: if `max_sources` is smaller than the number of clusters the list is truncated, and if two documents share a `domain` the Set collapses them. The returned list gives the multiset of cluster sizes; it does **not** identify which documents form a cluster. The conformance test of §13.3 also checks the statement empirically.
 
 ### 13.3 Corrections to the v0.2 description (§10 of v0.2)
 - The relevance gate of `assess()` was **omitted**; it requires a claim and can discard documents.
@@ -506,18 +625,24 @@ Repository `chefcohen/corroborate-mcp`, commit `1da5f9933c15119bd8078ecdc25710df
 - A faithful pairwise "reproduction" is **not possible** with the public function, which hides membership. The v0.2 description of B4 as a "faithful reproduction" with a pairwise-style evaluation was an over-statement.
 
 Consequence — three variants, named by what they are:
-- **B4-faithful:** the unmodified `assess()`, run by Node. The `claim` is a per-event string generated from the event record's core facts **before any document exists** (ASCII, identical for all documents of the event). Stub metadata: a unique stub domain per document, a constant `published_at`, `age_days` and `engine`. The input regime is adapted (synthetic documents, not search results); the algorithm is not. Output used: `n_independent_sources` and the cluster-size multiset (obtained from `echoed_by_n_domains`, which equals the cluster size when every domain is unique).
+- **B4-faithful:** the unmodified `assess()`, run by Node. The `claim` is a per-event string generated from the event record's core facts **before any document exists** (ASCII, identical for all documents of the event). Stub metadata: a **distinct stub domain per document**, a constant `published_at`, `age_days` and `engine`; `max_sources` set to at least the number of documents. The input regime is adapted (synthetic documents, not search results); the algorithm is not. Output used: `n_independent_sources` and the cluster-size multiset (from `echoed_by_n_domains`, under the conditions of §13.2).
 - **B4-core:** a harness that imports the original `normTitle`, `jaccard`, `coreTokens`, `relevance` from the original `text.js` and reproduces the loop of lines 52–58 verbatim while returning membership. Conformance test: on a fixed set of at least 1,000 random title lists, for the same order, B4-core gives the same cluster count and the same multiset of cluster sizes as B4-faithful. Until it passes, nothing is claimed about B4-core.
 - **B4-tuned:** B4-core with the relevance gate off and a swept threshold. The gate removes documents whose titles do not address the claim; in this regime it handicaps B4, and "beating B4" would then be trivial. Gate-off removes that handicap.
 
-### 13.4 Evaluation of B4 and what is not comparable
-- **Input:** the titles of the 14 documents of S (plus the claim for the gate). B4 sees only titles and sees the whole set at once.
-- **Order dependence:** 100 seeded random permutations of S per event.
-- **From clusters to pairs:** a pair is predicted dependent if both documents are in the same cluster in at least 50% of the permutations; the fraction is kept as a descriptive score. A document discarded by the gate belongs to no cluster and its pairs are predicted independent. **Information lost:** the continuous score (only one operating point remains), the assignment history, and the case of a document similar to two clusters but assigned to the first.
-- **Native metrics:** origin-count error, B-cubed, ARI (§8.5). The count is natively comparable to the truth of 5 origins per event on S.
-- **Not directly comparable to the pairwise methods:** B4-faithful and B4-core have a single operating point and cannot enter the equal-FPR comparison; B4 sees only titles, not bodies; B4 is a set-level method (the declared C13 exception); the diagnostic pairs with P, where the truth is not a partition, are not comparable.
+### 13.4 Evaluation of B4: permutations and the EP-002 evaluation reduction
+**What belongs to corroborate-mcp and what does not.** Clustering, the threshold 0.55, the relevance gate and the order dependence belong to corroborate-mcp. **Everything in this subsection that turns clusters into pairwise predictions belongs to EP-002 and is not a corroborate-mcp behaviour.**
 
-### 13.5 Verdict
+- **Input:** the titles of the 14 documents of S (plus the event claim for the gate). B4 sees only titles and sees the whole set at once.
+- **Permutations:** 100 seeded random permutations π_1..π_100 of S per event. For each, B4-faithful gives a count and a size multiset, and B4-core gives a partition.
+- **EP-002 evaluation reduction (ER-B4).** For a pair (u, v), let f(u, v) be the fraction of the 100 permutations in which u and v are in the same B4-core cluster (0 if either is discarded by the gate). **The pair is predicted dependent iff f(u, v) ≥ θ, with θ = 0.50.** θ is a methodological choice of EP-002, frozen at stage 1. **Descriptive sensitivity analysis at θ ∈ {0.25, 0.50, 0.75} on the dev split only; no value is selected from it and no value is chosen on the test split.** The relation induced by ER-B4 is not guaranteed to be transitive.
+- **Where ER-B4 is used:** the pairwise metrics of B4-core and B4-tuned. It is **not** used for B4-faithful (count only) or for the partition metrics of B4-core (computed per actual partition, §8.5).
+- **Information lost in ER-B4:** the continuous score (only one operating point remains), the assignment history, and the case of a document similar to two clusters but assigned to the first.
+- **Native metrics:** origin-count error, B-cubed, ARI (§8.5). The count is natively comparable to the truth of 5 origin blocks per event on S.
+
+### 13.5 What is not directly comparable
+B4-faithful and B4-core have a single operating point and cannot enter the equal-FPR comparison; B4 sees only titles, not bodies; B4 is a set-level method (the declared C13 exception); the diagnostic pairs with P, where the graph relation is not a partition, are not comparable.
+
+### 13.6 Verdict
 **Not a KILL.** corroborate-mcp addresses claim-level corroboration with a lexical headline rule and no body-level analysis. It does not attempt non-literal derivation detection in body text, which is the EP-002 question. B4-tuned is the strongest form of that rule and enters the comparison S-b.
 
 ---
@@ -529,26 +654,28 @@ Consequence — three variants, named by what they are:
 3. **Unique-detail channel.** Unique details are inserted by construction and their retention is a generative parameter. A method exploiting them has an advantage that the real world may not give. D4 (masking) measures the reliance; it does not remove it.
 4. **Supervised candidates learn the pipeline.** A candidate with parameters fitted on dev labels can learn artefacts of this generation pipeline, which the test split shares. Mitigations are the cell design, C6, D1, D2 and D4, and the rule that success authorises only EP-003.
 5. **Local models.** The primary configuration uses local open-weight models. Rewrites by small models may not resemble rewrites by frontier models, and a weaker local B5 makes the kill K2 less likely to fire than a stronger judge would. The frontier control (§7.6) is reported separately and does not change the outcome.
-6. **Error asymmetry.** The operating point (FPR_w = 10%) protects against merging independent sources; missing a dependence (counting two repetitions as two confirmations) is also an error and is visible in recall and in the origin-count error.
+6. **Error asymmetry.** The operating point (FPR_w = 10%) protects against merging independent documents; missing a dependence (counting two repetitions as two confirmations) is also an error and is visible in recall and in the origin-count error.
 7. **Precision and F1** depend on the constructed prevalence.
 8. **Hidden dependence between generator models** (overlapping pre-training may produce similar phrasing for the same facts) is addressed only by randomization, strata D3 and D2, not removed.
 9. **Direction and genealogy** are not measured.
 10. **Chain depth** is at most 2.
-11. **I1 instruction** ("same register") is artificial.
+11. **Hard negatives are artificial.** I1–I3 are stress tests (§5.4); FPR on N_k is not an estimate of real-world prevalence or of the real-world false-positive rate.
+12. **Power analysis** rests on a normal approximation and on assumptions about unknowns (§10.4, §10.6).
 
 ---
 
 ## 15. Reproducibility, order of execution and time box
 
 **Order of execution**
-1. Pilot (3–5 burned events): pipeline, audit, timing, log-probability availability.
-2. **Stage-1 freeze** (tag `ep002-stage1`): configuration, constants, grid, rules, N_dev, N_max, prompts and paraphrases, frontier-subset rule, masking rule.
-3. Generate the **dev** split; ledger; mechanical checks.
-4. Validate dev: C6, C7, C11 and the design checks; at most one regeneration (§5.6).
-5. Calibrate baselines and explore candidates on dev, at most K = 10 variants per family, all logged.
-6. **Freeze** (tag `ep002-freeze`): primary candidate, thresholds, R*, baselines, paraphrases; compute **N_test** (stage 2, §10.3).
-7. Generate the **test** split with the frozen configuration and new seeds; mechanical checks only.
-8. Evaluate **once**; produce the report, with the frontier control reported separately.
+1. Pilot (3–5 burned events): pipeline, audit, timing, B5 eligibility.
+2. **Stage-1 freeze** (tag `ep002-stage1`): configuration, constants, grid, rules, selection rule, baseline set, O1 specification, B5 model record and template, N_dev, N_max, frontier-subset rule, masking rule; planning run of Algorithm P per grid column.
+3. Generate the **dev** split; ledger; mechanical checks (C1–C3, C12, C14–C16).
+4. Calibrate the **baselines** on dev (B5 prompt variants up to K = 10, thresholds, B4-tuned grid) and **freeze them** (tag `ep002-baselines`). If the dev split is regenerated (§5.6), the baselines are recalibrated from scratch under the same budget on the new dev, and only the baselines frozen afterwards are used.
+5. Validate dev: C6, C7, C11 (using the frozen baselines only); at most one regeneration (§5.6).
+6. Explore candidates on dev, at most K = 10 variants, all logged.
+7. **Freeze** (tag `ep002-freeze`): primary candidate, thresholds, R*, prompt paraphrases; compute **N_test** by Algorithm P with the dev-estimated quantities of §10.3 (stage 2).
+8. Generate the **test** split with the frozen configuration and new seeds; mechanical checks only.
+9. Evaluate **once**; produce the report, with the frontier control reported separately.
 
 **Reproducibility**
 - All random processes seeded; seeds in a versioned configuration file.
@@ -563,32 +690,35 @@ Consequence — three variants, named by what they are:
 
 ## 16. Decisions approved and items for the final review
 
-**Approved by the project owner (2026-10-02):** success criterion S1 (not S2); +5-point FPR guard with equal-FPR comparison as the main comparison; K = 10 symmetric with a logged variant ledger; frontier exception as a separate, non-influencing control on a fixed subset; N_max provisional, with INCONCLUSIVE-UNDERPOWERED and no criterion change; two-stage power analysis with pilot limited to mechanics; check C13; unique-detail masking as a diagnostic; primary definition = independence relative to the complete recorded provenance graph, with the closure rule; B4 named by what it is.
+**Approved by the project owner (2026-10-02):** primary task = independence of origin; complete recorded provenance graph and closure rule; two parallel lineages; independent reporters; ground truth invisible to the detector; C13 score purity; test generated after the freeze; one primary candidate; K = 10; S1 (not S2); +0.20 as minimum effect of interest; FPR 10% as main comparison; +5-point guard; frontier control separate; unique-detail masking as a diagnostic; two-stage power analysis; B4-faithful / B4-core / B4-tuned as distinct concepts.
 
-**Items for the final review** (introduced while writing v0.3; none changes a threshold):
-1. **Kill criteria operationalized** (§9.2): "within the CI" became UB(Δ) < 0.20, and each kill is the demonstrated opposite of a success criterion.
-2. **INCONCLUSIVE-UNDERPOWERED** applies whatever the observed statistics (§9.4), and K1–K5 are disabled in that case.
-3. **C11 (headroom) failure ends the experiment** without regeneration (§5.6).
-4. **B4-tuned runs with the relevance gate off** (§13.3).
-5. **B5-score** depends on token log-probabilities, with a sampling fallback (§7.3).
-6. **Supervised candidates** learn the pipeline (§14.4).
-7. **Generative parameters** (§5.2) are proposed defaults to be frozen at stage 1.
+**Closed in v0.4 (the six blocking issues of the review of v0.3):** shared-origin equivalence separated from ancestry and from the bridge diagnostic (§3.3–3.5, C16); B4 reduction named as an EP-002 evaluation reduction with a descriptive sensitivity analysis, and the `echoed_by_n_domains` statement verified with its conditions (§13.2, §13.4); O1 renamed a dataset-specific diagnostic upper bound, fully pre-specified, with C11 restricted to frozen baselines (§7.4); intervals declared descriptive within a pre-registered rule (§9.0); a deterministic power algorithm (§10.5); a rigorous B5-score protocol with no forced fallback (§7.3, §9.6).
+
+**Items for the final review** (introduced in v0.3 and v0.4; none changes a threshold):
+1. Kill criteria operationalized as UB(Δ) < 0.20, each kill being the demonstrated opposite of a success criterion (§9.2).
+2. INCONCLUSIVE-UNDERPOWERED applies whatever the observed statistics (§9.4).
+3. C11 (headroom) failure ends the experiment without regeneration (§5.6).
+4. B4-tuned runs with the relevance gate off (§13.3).
+5. B5-score unavailable → no sampling fallback, success label carries a suffix and requires owner review (§9.6).
+6. Supervised candidates learn the pipeline (§14.4).
+7. Generative parameters (§5.2) are proposed defaults to be frozen at stage 1.
+8. The B5 model identity is frozen at stage 1 from the pilot, not in this document (§7.3).
+9. The false-kill probability of the union rule K1–K5 is reported by the simulation but not controlled (§9.0).
 
 ---
 
 ## Changelog
 
-**0.3 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run.
-1. **Primary task changed from information-flow dependence to independence of origin**, defined on the complete recorded provenance graph, with four categories and a closure rule; information flow kept as a diagnostic (§2, §3).
-2. **Dataset redesigned:** 17 documents per event in two parallel lineages (X from ORIG, Y from H), roots H, I1–I3 and an auxiliary P; literal documents A and B and P outside the primary set; cells R–D and D–D with fixed weights; full pair-class table (§5). Removes the document-type confound of EP-001.
-3. **Independent reporters made operational** (observation set, a-priori style id, length; no text of other documents); I1 shares ORIG's unique details by construction (§5.4).
-4. **Generation protocol:** balanced randomized assignment, "different model" constraint of D removed, context audit, boilerplate check, ledger, one regeneration with pre-registered knobs, test generated after the freeze (§5.4–5.7).
-5. **Checks** extended to C1–C15 with the confounder each removes; headroom check C11 with an out-of-sample oracle O1; score purity C13; diagnostics D1–D9 (§6, §7.4).
-6. **Baselines:** B4 split into B4-faithful (count only), B4-core (membership, conformance-tested) and B4-tuned; B5 split into B5-score (symmetric prompt, both orders, log-probabilities) and B5-verdict; K = 10 symmetric tuning budget (§7).
-7. **Verification of corroborate-mcp at commit `1da5f99`** corrected the v0.2 description (§13.3).
-8. **Criteria formalized:** S1 against every baseline at equal FPR_w = 10% with paired event bootstrap; +5-point guard; non-inferiority on hard negatives; robustness over four prompt formulations; kills as the demonstrated opposite of successes; INCONCLUSIVE-UNDERPOWERED (§9).
-9. **Power analysis made two-stage** with explicit lists of quantities estimated on dev and quantities pre-registered; grid; binding rule; N_max provisional (§10).
-10. **Register of constants** (§11); **frontier control** and **masking diagnostic** defined as non-influencing (§7.6, §8.6).
+**0.4 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run.
+1. **Shared-origin equivalence (§3).** The primary relation is now defined as the kernel of an origin function on the primary set S, which makes it an equivalence with 5 origin blocks per event; ancestor-sharing and the ancestor order are defined separately; ancestry and the bridge case are separate diagnostics; check C16 verifies the single-origin and no-hidden-ancestor conditions on every recorded graph; terminology fixed (§3.8).
+2. **B4 (§7.1, §13.2–13.5).** The 50% co-membership rule is named the EP-002 evaluation reduction ER-B4 and is no longer described as corroborate-mcp behaviour; sensitivity at 25/50/75% is descriptive and dev-only; partition metrics for B4-core use the actual partitions; the `echoed_by_n_domains` statement is kept with its two conditions, verified in the pinned code; B4-tuned threshold grid pre-registered.
+3. **O1 / C11 (§7.4).** O1 and R1 renamed dataset-specific diagnostic upper bounds; model, features, threshold rule and out-of-fold predictions fully specified; C11 uses only frozen, pre-specified baselines; order of execution changed so that baselines are frozen before C11 and before candidate exploration (§15).
+4. **Multiple comparisons (§9.0, §7.2).** Interpretation A: descriptive intervals within a pre-registered decision rule; no FWER claim; one primary candidate; selection rule frozen at stage 1; test once; secondary candidates never promotable; no baseline added after the stage-1 freeze or the test; prompt paraphrases written once at the freeze and all used.
+5. **Power analysis (§10).** Deterministic Algorithm P with explicit inputs, statistic vector, multivariate normal model, floors and caps, bootstrap-based decision rule S-b to S-d, joint power, N_test rule, N_cap check and outcome; explicit lists of what is pre-registered, what may be estimated on dev, and what can never be used; I1–I3 enter through the f_k statistics and criterion S-d.
+6. **B5-score (§7.3, §9.6).** Model record, exact template, token sets, scoring formula, coverage check, symmetry, use of the score for ordering only, K = 10 budget; the sampling fallback was removed: B5-score is unavailable if log-probabilities are not usable, and §9.6 applies.
+7. **Non-blocking:** terminology unified (§3.8); operating point, guard and margin centralized in §8.2; C14 stated at pair level and by cell; I1–I3 declared artificial hard negatives and not a prevalence estimate (§5.4, §14.11).
+
+**0.3 (2026-10-02)** — primary task changed to independence of origin; two-lineage dataset; checks C1–C15; baselines B4-faithful/core/tuned and B5-score/verdict; formal criteria S1 at equal FPR, guard, non-inferiority, kills; two-stage power analysis; register of constants; corroborate-mcp verified at `1da5f99`.
 
 **0.2 (2026-10-02)** — after review of PR #2: B4 split from B4-tuned; case J removed; ground truth vs detector input made explicit; hard negatives I1–I3; N no longer fixed.
 
@@ -599,7 +729,7 @@ Consequence — three variants, named by what they are:
 ## Summary for readers of the repository
 1. **Why EP-001 was stopped:** it measured near-identical lexical overlap; it detected no summaries or rewrites, and its dataset had a light-edit bug, label leakage, mostly trivial negatives and a document-type confound (§1).
 2. **What EP-002 tests:** whether independence of origin — including between two derivatives of the same unseen original — can be detected from the texts substantially better than lexical, semantic and simple-LLM baselines, at the same false-positive rate (§3–4).
-3. **What it does not test:** absolute epistemic independence in the real world; sources outside the recorded graph (§2).
+3. **What it does not test:** absolute epistemic independence in the real world; documents outside the recorded graph (§2).
 4. **Data:** fictional events, several generator families, two parallel lineages per event, controlled information flow, ground truth from the recorded graph (§5).
 5. **Baselines:** lexical, TF-IDF, embedding, corroborate-mcp (in three precisely named forms) and a plain LLM prompt (§7, §13).
 6. **Criteria:** S1 at equal FPR, +5-point guard, non-inferiority on hard negatives, kills as demonstrated opposites, INCONCLUSIVE-UNDERPOWERED when N cannot be reached (§9–10).
