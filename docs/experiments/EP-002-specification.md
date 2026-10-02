@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.4 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
-| Version | 0.4 (2026-10-02) — see Changelog at the end |
+| Status | **DRAFT — v0.5 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Version | 0.5 (2026-10-02) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -290,11 +290,11 @@ The baseline set 𝔅 = {B1, B2, B3, B4-tuned, B5-score} is **fixed at stage 1**
 | B3 | Sentence-embedding cosine | one pinned open-source embedding model (name and version in the configuration); document vector = mean of its sentence vectors |
 | B4-faithful | corroborate-mcp `assess()`, unmodified | the original function run by Node at commit `1da5f99`, once per permutation (§13.4), with inputs adapted (§13.3). Native output only: `n_independent_sources` and the cluster-size multiset. Used for the **origin-count** metric (§8.5), **never** converted into pairwise scores |
 | B4-core | corroborate-mcp clustering loop with membership exposed | the original `normTitle`, `jaccard`, `coreTokens` and `relevance` imported from the original `text.js`; the clustering loop of `engine.js` lines 52–58 reproduced verbatim in a harness that returns cluster membership; conformance-tested against B4-faithful (§13.3). Native threshold 0.55. Pairwise metrics use the **EP-002 evaluation reduction ER-B4** (§13.4), which is not a corroborate-mcp behaviour |
-| B4-tuned | B4-core, relevance gate off, threshold swept | same clustering rule, with the Jaccard threshold τ taken from a **pre-registered grid {0.05, 0.10, …, 0.95}**; ER-B4 with θ = 0.50; the operating point is the setting with the highest recall_w subject to FPR_w ≤ 10% on dev. Reported separately; never presented as corroborate-mcp |
+| B4-tuned | B4-core, relevance gate off, threshold swept | same clustering rule, with the Jaccard threshold τ taken from a **pre-registered grid {0.05, 0.10, …, 0.95}**; ER-B4 with θ = 0.50; its frozen setting is the one with the highest recall_w subject to FPR_w ≤ 10% on dev (the equal-FPR comparison uses R_10 of §8.2). Reported separately; never presented as corroborate-mcp |
 | B5-score | Simple LLM judge, scored | one direct prompt, one pinned local model, log-odds score (§7.3) |
 | B5-verdict | Simple LLM judge, raw verdict | the same prompt answered yes / no / uncertain; qualitative kill-test form (§7.3) |
 
-Thresholds for B1, B2, B3, B5-score and the candidate are chosen on the **dev split**: the **lowest cutoff** at which FPR_w ≤ 0.10, then frozen. B4-faithful and B4-core use their original threshold 0.55 and are never tuned.
+**Frozen thresholds.** The deployable threshold of B1, B2, B3, B5-score and the candidate is chosen on the **dev split**: the **lowest cutoff** at which FPR_w ≤ 0.10, then frozen. It is a real, deterministic setting; it is used for the guard S-c and for the frozen-threshold analysis. It is **never** defined by randomization. The equal-FPR comparison and every "recall at FPR_w = 10%" in this specification use the evaluation quantity **R_10** of §8.2, which is a separate object. B4-faithful and B4-core use their original threshold 0.55 and are never tuned.
 
 ### 7.2 Candidate methods — explored on dev only, none assumed
 Candidates may be: semantic similarity variants; claim overlap; entity/event overlap; unique-detail overlap; structured LLM-based signals; combinations. Rules:
@@ -302,7 +302,7 @@ Candidates may be: semantic similarity variants; claim overlap; entity/event ove
 1. **At most K = 10 variants** in total for the candidate family on the dev split, counted jointly across all candidate designs. The same K = 10 applies to every other family that requires tuning (B5: prompt variants). B1 has no variants; B2 and B3 configurations are fixed in §7.1; B4-tuned's threshold grid is pre-registered and is not a set of variants. A threshold choice is not a variant. The prompt paraphrases of §8.7 do not count.
 2. **Every variant tried is recorded** (design, hash, dev result) in a versioned variant ledger. **After the freeze no further variant is allowed.**
 3. A variant that learns parameters from labelled dev pairs is scored by event-grouped cross-validation on dev (5 folds, repeated 10 times, as for O1) and then refit on all dev data; its in-sample dev score is never used for selection.
-4. **Selection rule (frozen at stage 1, before any dev event exists).** **One primary candidate** is selected on dev: the variant with the highest recall_w at FPR_w = 10% (out-of-fold where applicable); ties go to the cheaper variant. It is frozen — together with its threshold, prompts, features and parameters — with a git tag and a content hash. Selection uses the dev split only.
+4. **Selection rule (frozen at stage 1, before any dev event exists).** **One primary candidate** is selected on dev: the variant with the highest R_10 (§8.2) on dev (out-of-fold where applicable); ties go to the cheaper variant. It is frozen — together with its threshold, prompts, features and parameters — with a git tag and a content hash. Selection uses the dev split only.
 5. The test split is evaluated **once**. Other candidates are **secondary**: they may be evaluated once on test and reported, but **cannot declare success and can never be promoted to primary after the test has been seen**. If a secondary candidate would have succeeded where the primary did not, the consequence is a new pre-registered round, not a success.
 6. The baselines are calibrated on the current dev **before** candidate exploration begins and are frozen (tag `ep002-baselines`); candidates are explored afterwards. No candidate, variant or exploratory design enters any baseline-based quantity (§7.4, C11).
 
@@ -348,7 +348,7 @@ The model's answer starts immediately after the chat template's generation promp
 - **Features** (fixed list, computed by exact match of fictional tokens, none using wording): Jaccard of the sets of fact IDs present; number of shared unique details; number of unique details in the union; agreement in the order of shared facts (Kendall tau); number of shared idiosyncratic errors.
 - **Model:** logistic regression, L2 regularization with fixed strength, standardized features; a separate model per cell. No hyperparameter search.
 - **Predictions:** all predictions are out-of-fold, from event-grouped cross-validation on dev (5 folds, repeated 10 times with different fold assignments); the score of a pair is the mean of its out-of-fold scores, so no prediction is made on an event that contributed to training.
-- **Threshold rule:** on the pooled out-of-fold scores, the lowest cutoff with FPR_w ≤ 0.10 (a single threshold parameter fitted on dev, as for the baselines; the residual optimism is symmetric and, for the baselines, favours them, which makes C11 conservative).
+- **Operating-point rule:** on the pooled out-of-fold scores, the quantity R_10 of §8.2, computed by the same rule as for every other method (the residual optimism of fitting the operating point on dev is symmetric and, for the baselines, favours them, which makes C11 conservative).
 - recall_w and FPR_w as in §5.5, event-macro averaged; the bootstrap CI is over events on the out-of-fold scores (it ignores training variability; stated).
 
 **C11.** headroom = recall_w(O1) − max over the **frozen baselines** {B1, B2, B3, B4-tuned, B5-score} of recall_w at FPR_w = 10% on dev. The maximum is taken **only over baselines that are pre-specified in §7.1, whose tuning budget (K = 10 for B5) was spent and frozen before C11 is computed (tag `ep002-baselines`)**, and never over a candidate, a candidate variant or any design explored after the baselines were frozen. Pass if the point estimate is ≥ 0.20 (the effect of interest). A failure ends the experiment (§5.6).
@@ -376,15 +376,59 @@ Same-event pairs of the **test** split in the cells of §5.5 (PC1–PC6), with t
 | +5 points on N_k, at the equal-FPR point | non-inferiority margin on the hard negatives | S-d, K3 |
 | FPR_w = 5% and 20% | descriptive sensitivity | reported only |
 
-- **Primary comparison — equal FPR.** All methods that produce an ordered family of settings (a score or a threshold grid) are compared at FPR_w = 10% on the test split: the setting with the highest recall_w subject to FPR_w ≤ 0.10. This uses the test labels only to place each method at the same false-positive rate, an evaluation-time matching symmetric across methods; no parameter of any method is changed.
-- **Frozen-threshold analysis — guard.** Each method is also evaluated at the threshold frozen on dev. For the candidate this yields the guard of S-c. Recall differences at frozen thresholds are reported as a secondary analysis.
-- B4-core at its native 0.55, B4-faithful and B5-verdict have no setting sequence; they are reported at their native point and are not part of the equal-FPR comparison.
+- **Primary comparison — equal FPR.** All methods that produce an ordered family of operating points (a score or a threshold grid) are compared at FPR_w = 10% by the single rule below. The rule uses the test labels only to evaluate the (FPR_w, recall_w) of each point of a **pre-registered, frozen family** and to place each method at the same false-positive rate, an evaluation-time matching symmetric across methods, as in any ROC evaluation; no threshold, grid or parameter of any method is chosen or changed with test information.
+- **Frozen-threshold analysis — guard.** Each method is also evaluated at the threshold frozen on dev (§7.1). For the candidate this yields the guard of S-c. Recall differences at frozen thresholds are reported as a secondary analysis.
+- B4-core at its native 0.55, B4-faithful and B5-verdict have no operating-point family; they are reported at their native point and are not part of the equal-FPR comparison.
+
+#### 8.2.1 The equal-FPR rule (identical for every method)
+
+**Operating-point family.** Every method of the equal-FPR comparison has a pre-registered family of operating points: for a score-based method (B1, B2, B3, B5-score, the primary candidate) each cutoff at an observed score value (predicted positive iff the score is at least the cutoff; tied scores form one cutoff); for B4-tuned each setting of its pre-registered threshold grid with ER-B4 at θ = 0.50 (§7.1, §13.4). No point is added, removed or modified after the freeze, and the family is the same in every bootstrap replicate; only its evaluation on the resampled events changes. The rule applies identically to continuous-score and to discrete-grid families: for a continuous score the points are simply dense.
+
+**Statistics of a point.** (FPR_w, recall_w) of §5.5, computed on the events under consideration (the full test split, or a bootstrap resample).
+
+**Empirical frontier.** From the family, keep only the **non-dominated** points: a point j is dominated if another point i has FPR_w(i) ≤ FPR_w(j) and recall_w(i) ≥ recall_w(j) with at least one strict inequality; of identical points keep one. If several points have the same FPR_w, **the one with the highest recall_w is kept**. Sort the remaining points by increasing FPR_w: (F_1, R_1), …, (F_m, R_m), with F and R both strictly increasing. (The non-dominance step makes the rule fair to families whose points are not nested, such as B4-tuned: without it an adjacent point of lower recall could drag the randomized value below a better point already available.)
+
+**Rule.** Let F* = 0.10.
+1. **Exact point.** If some F_i = F*: R_10 = R_i, used directly, without randomization.
+2. **Randomization between adjacent points.** Otherwise, if there are adjacent points a and b = a + 1 with F_a < F* < F_b, let
+   λ = (F* − F_a) / (F_b − F_a) ∈ (0, 1)
+   and consider the randomized classifier that uses point b with probability λ and point a with probability 1 − λ. Its **expected** false-positive rate is (1 − λ)·F_a + λ·F_b = F* and its **expected** recall is
+   **R_10 = (1 − λ)·R_a + λ·R_b.**
+3. **No reachable point.** If every F_i < F* or every F_i > F*, the method has **NO REACHABLE 10% OPERATING POINT**. R_10 is undefined; nothing is extrapolated beyond the observed frontier and no recall is assigned.
+
+**Mathematical basis.** FPR_w and recall_w are weighted means (fixed cell weights, equal-weight average over events) of per-pair predicted-positive indicators. They are therefore **linear** in the per-pair prediction probabilities. A classifier that uses point b with probability λ, either as one global Bernoulli draw or independently pair by pair, has per-pair prediction probabilities (1 − λ)·1[a] + λ·1[b], and by linearity its expected statistics are the same convex combinations of the statistics of a and b. The pair (F*, R_10) is therefore an **achievable expected operating point** on the segment between two achievable points; nothing outside the observed frontier is assumed. Because F_a < F* < F_b and recall is increasing along the frontier, R_10 ≥ R_a: the rule never gives a method less than "the highest recall subject to FPR_w ≤ 0.10", and gives more to a coarse family exactly by the amount that the discretization had withheld. The evaluation uses the **expectation**: **no random number is drawn and no seed is involved**; R_10 is a deterministic function of the frozen family and of the events.
+
+**Other statistics at the same point.** Any other statistic that is linear in the predicted-positive indicators — FPR_k on N_k (S-d), recall per class, FPR in each cell, and the per-event values — is evaluated at the **same two points a and b with the same λ** of the pooled FPR_w frontier: (1 − λ)·stat_a + λ·stat_b. For per-event values the λ is the one computed on the pooled sample, so the mean of the per-event values equals R_10.
+
+**Where R_10 is used.** Wherever this specification says "recall (or FPR) at FPR_w = 10%": S-b, S-d, K1–K3; C6, C7 and C11 (on dev, applied to the dev events, out-of-fold for supervised scores); the selection of the primary candidate and of the B5 prompt (on dev); and the stage-2 estimates of §10.3. The frozen threshold of §7.1 is **not** defined by this rule.
+
+**Limit cases.**
+
+| Case | Treatment |
+|---|---|
+| A point with FPR_w exactly 0.10 exists | use it directly, no randomization |
+| All points have FPR_w < 0.10 | NO REACHABLE 10% OPERATING POINT; no extrapolation beyond the observed frontier |
+| A point above 0.10 exists but none at or below 0.10 | NO REACHABLE 10% OPERATING POINT; no randomized point is built, because that would assume behaviour outside the grid |
+| Several points have the same FPR_w | keep the one with the highest recall_w (the frozen rule), then apply the rule |
+| Dominated point (higher FPR_w, not higher recall_w) | removed from the frontier before the rule is applied |
+| Any need to choose a threshold, add a grid value or change a grid with test information | **not permitted**; the family is frozen before the test |
+
+**Consequences of NO REACHABLE** are fixed in §9.7.
 
 ### 8.3 Reported for every method
 Recall_w, FPR_w, precision and F1 (these depend on the constructed prevalence and are not transferable to the real world); recall for every positive class PC1–PC4 and for the ancestry categories; FPR for PC5, PC6 and PC7; FPR for each N_k (k = H, I1, I2, I3); the diagnostic classes PC8–PC11; cross-event pairs in a separate table.
 
+**Equal-FPR results table (mandatory).** One row per method of the equal-FPR comparison (the primary candidate, B1, B2, B3, B4-tuned, B5-score), reporting the quantity of §8.2.1 and how it was obtained:
+
+| Method | FPR operating point (expected) | Recall at FPR = 10% (R_10) | Operating-point type | Adjacent points used (F_a, R_a), (F_b, R_b), λ | Frozen-threshold FPR_w and recall_w |
+|---|---:|---:|---|---|---|
+| Candidate | … | … | continuous (exact) / continuous (randomized) / discrete (exact) / discrete (randomized) / **NO REACHABLE 10% OPERATING POINT** | … | … |
+| B1, B2, B3, B4-tuned, B5-score | … | … | … | … | … |
+
+A method with no reachable point is reported with the text **NO REACHABLE 10% OPERATING POINT** in the recall column; **no interpolated or extrapolated recall is assigned to it.** The number of bootstrap replicates in which a method had no reachable point (§8.4) is reported.
+
 ### 8.4 Uncertainty and paired bootstrap
-- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference, and **the equal-FPR operating point is recomputed inside every replicate** for each method. LB and UB denote the 2.5th and 97.5th percentiles.
+- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference. **The equal-FPR rule of §8.2.1 is applied separately inside every bootstrap replicate, for each method:** (1) the (FPR_w, recall_w) of every point of the method's frozen family are recomputed on the resampled events; (2) the non-dominated frontier is rebuilt; (3) the points adjacent to FPR_w = 10% are found; (4) λ is computed; (5) R_10 of that replicate is computed; (6) the paired difference of the replicate is taken between the R_10 values. **λ is never computed once on the full test sample and reused across replicates**: the uncertainty about the position of the operating points propagates into the interval. LB and UB denote the 2.5th and 97.5th percentiles; the treatment of replicates in which a method has no reachable point is fixed in §9.7.
 - Non-deterministic methods are run 5 times; the per-pair score is the mean of the 5 runs, and the range of the metrics is reported.
 
 ### 8.5 Partition metrics and origin count
@@ -406,7 +450,7 @@ Every LLM-based method (the candidate if LLM-based, and B5) is run with its main
 
 ## 9. Success, kill and inconclusive criteria — fixed before the experiment
 
-All statements refer to the **primary candidate** P and to the baseline set 𝔅 of §7.1. Δ_X = recall_w(P) − recall_w(X) at equal FPR_w = 10% on test, with the paired event bootstrap of §8.4.
+All statements refer to the **primary candidate** P and to the baseline set 𝔅 of §7.1. Δ_X = R_10(P) − R_10(X), the difference of the equal-FPR recalls of §8.2.1 on test, with the paired event bootstrap of §8.4.
 
 ### 9.0 Statistical status of the intervals
 The 95% bootstrap intervals are **descriptive intervals used inside a pre-registered decision rule**. EP-002 does **not** present them as hypothesis tests with control of the family-wise error rate, and no multiplicity-adjusted p-values or simultaneous-inference claims are made. The rule combines many comparisons (up to 5 baselines, 3 hard-negative sets, up to 4 prompt formulations): SUCCESS is an **intersection** of per-comparison conditions and KILL is a **union** (any single demonstrated failure). The operating characteristics of the rule — the probability of SUCCESS, of KILL and of INCONCLUSIVE under stated scenarios — are computed by the simulation of §10 and reported, but are **not** gates.
@@ -446,6 +490,11 @@ The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagn
 ### 9.6 If B5-score is unavailable
 (1) S-b is evaluated against the baselines that are available; (2) K2 cannot be evaluated; (3) B5-verdict is reported as a qualitative result; (4) the outcome label carries the suffix "(B5 not quantitatively compared)" and the project owner must review the B5-verdict result before any success is used to authorise EP-003. The fallback is not forced into the quantitative comparison.
 
+### 9.7 If a method has no reachable 10% operating point
+1. **On the full test sample.** If R_10 is undefined for P or for some X ∈ 𝔅, then Δ̂_X is undefined: S-b is **not met**, the comparison is reported as NO REACHABLE 10% OPERATING POINT with no recall assigned, and K1 or K2 **cannot fire** for that X. The outcome is then at best INCONCLUSIVE unless another kill criterion applies.
+2. **In a bootstrap replicate.** A replicate in which P or X has no reachable point is **kept as undefined** (not dropped, not imputed). When LB is computed it is ordered below every defined value; when UB is computed it is ordered above every defined value. The interval therefore widens, which is conservative for both success and kill. The number of undefined replicates is reported.
+3. **On dev.** A baseline with no reachable point on dev is reported and excluded from the maxima of C6, C7 and C11, and the project owner reviews the case before the baselines are frozen (§15, step 4).
+
 ---
 
 ## 10. Sample size and power
@@ -477,6 +526,7 @@ Exactly these quantities, and no others, may be estimated from the dev split:
 ### 10.4 Statistics and model
 - J = {1} if neither P nor B5 is LLM-based, otherwise J = {1, 2, 3, 4} (the four formulations).
 - Statistic types: d_X for each available X ∈ 𝔅 (recall difference), f_k for k ∈ {I1, I2, I3} (paired FPR difference versus R*), g (FPR_w of P at its frozen threshold). With n_𝔅 = |𝔅 available| the number of types is T = n_𝔅 + 3 + 1, and the number of statistics is m = T·|J|.
+- The per-event values of d_X and f_k are the per-event values at the equal-FPR operating point of §8.2.1: for a randomized point, (1 − λ)·value_a + λ·value_b with λ computed on the pooled sample, so that their mean over events is R_10 (or the corresponding mixture). Algorithm P is unchanged.
 - Per-event vector z_e ∈ ℝ^m is drawn from **N(μ, Σ)** (a normal approximation, declared as an arbitrary assumption: it ignores the boundedness of the statistics).
 - **Means:** μ = Δ_design for every d_X; μ = +0.02 for every f_k; μ = 0.10 for g. These come from §10.2, never from dev.
 - **Standard deviations:** σ_Δ,used = max(max_X σ̂_Δ,X, 0.15) for every d_X; σ_f,used = max(max_k σ̂_f,k, 0.10) for every f_k; σ_g,used = max(σ̂_g, 0.05).
@@ -562,6 +612,7 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | Floors σ_Δ ≥ 0.15, σ_f ≥ 0.10, σ_g ≥ 0.05; caps ρ_crit ≤ 0.30, ρ_form ≤ 0.50 | yes | MET (conservative direction) | yes | stage 1 | no |
 | Normal approximation of per-event statistics | yes | MET | yes, declared | stage 1 | no |
 | Cell weights 9/25 and 16/25 | yes | **MAT** (positive counts per cell) | no | with the design | no |
+| Equal-FPR rule: non-dominated frontier and expected randomization between adjacent points, F* = 0.10 (no new numeric constant) | yes | **MAT** (linearity of the statistics) / MET (frontier convention) | no | stage 1 | no |
 | Headroom threshold 0.20 (C11) | yes | **MAT** (necessary condition derived from the effect of interest) | no | with the design | no |
 | C6 rule "below best baseline + 0.20" | yes | MET (reuses the effect of interest) | partly | before dataset | no |
 | C7 difficulty floor recall_w ≥ 0.8 | yes | MET (inherited) | yes | before dataset | no |
@@ -694,7 +745,9 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 
 **Closed in v0.4 (the six blocking issues of the review of v0.3):** shared-origin equivalence separated from ancestry and from the bridge diagnostic (§3.3–3.5, C16); B4 reduction named as an EP-002 evaluation reduction with a descriptive sensitivity analysis, and the `echoed_by_n_domains` statement verified with its conditions (§13.2, §13.4); O1 renamed a dataset-specific diagnostic upper bound, fully pre-specified, with C11 restricted to frozen baselines (§7.4); intervals declared descriptive within a pre-registered rule (§9.0); a deterministic power algorithm (§10.5); a rigorous B5-score protocol with no forced fallback (§7.3, §9.6).
 
-**Items for the final review** (introduced in v0.3 and v0.4; none changes a threshold):
+**Closed in v0.5 (the remaining blocking issue of the review of v0.4):** the equal-FPR comparison is formalized for families of discrete operating points by randomization between adjacent non-dominated operating points, applied identically to every method and separately inside every bootstrap replicate, with explicit limit cases and a reporting table (§8.2.1, §8.3, §8.4, §9.7). S1, the +0.20, FPR 10%, the +5-point guard and margin, K = 10, candidate selection, test once, Algorithm P, C11 and B4-faithful / B4-core / B4-tuned / ER-B4 are **not** changed.
+
+**Items for the final review** (introduced in v0.3, v0.4 and v0.5; none changes a threshold):
 1. Kill criteria operationalized as UB(Δ) < 0.20, each kill being the demonstrated opposite of a success criterion (§9.2).
 2. INCONCLUSIVE-UNDERPOWERED applies whatever the observed statistics (§9.4).
 3. C11 (headroom) failure ends the experiment without regeneration (§5.6).
@@ -704,10 +757,21 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 7. Generative parameters (§5.2) are proposed defaults to be frozen at stage 1.
 8. The B5 model identity is frozen at stage 1 from the pilot, not in this document (§7.3).
 9. The false-kill probability of the union rule K1–K5 is reported by the simulation but not controlled (§9.0).
+10. **Uniform application of R_10.** The equal-FPR rule is applied to continuous-score methods as well, and to the dev quantities of C6, C7, C11 and of selection, so that the rule is identical for all methods; for fine continuous frontiers the difference from "highest recall with FPR_w ≤ 0.10" is at most one frontier step (§8.2.1).
+11. **Non-dominated frontier.** "Empirical frontier" is read as the set of non-dominated points; this gives a mild optimism to families with non-nested points (B4-tuned) and is conservative with respect to a continuous candidate (§8.2.1).
+12. **Consequences of NO REACHABLE** (§9.7): S-b not met, no kill, undefined replicates widen the interval, dev baselines excluded from the maxima with owner review. These rules were needed to make the specification complete and are conservative; they were not in the request.
+13. The randomization is a device for defining an achievable **expected** operating point; no random draw is made in evaluation, and the **frozen deployable thresholds are unchanged** (§7.1).
 
 ---
 
 ## Changelog
+
+**0.5 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run. Formalizes the equal-FPR comparison; nothing else is changed.
+1. **Equal-FPR rule (§8.2.1).** Operating-point family, non-dominated empirical frontier, exact point when FPR_w = 0.10 exists, otherwise randomization between the two adjacent points with λ = (0.10 − F_a)/(F_b − F_a) and R_10 = (1 − λ)R_a + λR_b; limit cases; "NO REACHABLE 10% OPERATING POINT" with no extrapolation; the same rule for every method; expectation used, no random draw; other linear statistics evaluated at the same two points and the same λ.
+2. **Bootstrap (§8.4).** The rule is applied separately in every replicate: frontier rebuilt, adjacent points found, λ recomputed, R_10 computed, paired difference taken; λ is never reused from the full sample.
+3. **Reporting (§8.3).** Mandatory equal-FPR results table with the type of each operating point and the text NO REACHABLE 10% OPERATING POINT where applicable.
+4. **Consequences (§9.7).** Behaviour of S-b, K1 and K2, bootstrap replicates and dev baselines when a method has no reachable point.
+5. **Consistency edits:** frozen thresholds stay deterministic and separate from R_10 (§7.1); selection, O1, C6, C7, C11 and the stage-2 estimates use R_10 (§7.2, §7.4, §8.2.1, §10.4); the constants register records the rule (§11).
 
 **0.4 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run.
 1. **Shared-origin equivalence (§3).** The primary relation is now defined as the kernel of an origin function on the primary set S, which makes it an equivalence with 5 origin blocks per event; ancestor-sharing and the ancestor order are defined separately; ancestry and the bridge case are separate diagnostics; check C16 verifies the single-origin and no-hidden-ancestor conditions on every recorded graph; terminology fixed (§3.8).
