@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.5 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
-| Version | 0.5 (2026-10-02) — see Changelog at the end |
+| Status | **DRAFT — v0.6 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Version | 0.6 (2026-10-02) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -382,7 +382,22 @@ Same-event pairs of the **test** split in the cells of §5.5 (PC1–PC6), with t
 
 #### 8.2.1 The equal-FPR rule (identical for every method)
 
-**Operating-point family.** Every method of the equal-FPR comparison has a pre-registered family of operating points: for a score-based method (B1, B2, B3, B5-score, the primary candidate) each cutoff at an observed score value (predicted positive iff the score is at least the cutoff; tied scores form one cutoff); for B4-tuned each setting of its pre-registered threshold grid with ER-B4 at θ = 0.50 (§7.1, §13.4). No point is added, removed or modified after the freeze, and the family is the same in every bootstrap replicate; only its evaluation on the resampled events changes. The rule applies identically to continuous-score and to discrete-grid families: for a continuous score the points are simply dense.
+**Operating-point family.** The family is defined by what is frozen, and the same rule then applies to every method.
+
+*Score-based methods* (B1, B2, B3, B5-score, the primary candidate). What is frozen is the **scoring rule**: a function that maps the two texts of a pair to a real number, with every parameter fixed before the test split exists:
+- B1: token-set Jaccard of the full texts, no parameters;
+- B2: TF-IDF cosine, with the vocabulary and the IDF weights fitted on dev only and frozen;
+- B3: cosine of the mean sentence embeddings of the pinned embedding model;
+- B5-score: the symmetric log-odds of §7.3, with the frozen model record and the selected prompt;
+- the primary candidate: its scoring function, with all features, prompts and parameters frozen at the freeze (tag and content hash).
+
+The family of operating points is **not** a frozen set of cutoffs. **For score-based methods the family is finite on any realized sample: one operating point is defined for each distinct observed score cutoff, with ties handled as a single cutoff** (a pair is predicted dependent iff its score is at least the cutoff). The cutoffs, and therefore the points, are derived from the scores of the pairs of the sample under evaluation. In each bootstrap replicate the scores are those computed **once** on the test pairs by the frozen scoring rule — nothing is re-scored or re-fitted — and only the events, hence the pairs and their multiplicities, change; the cutoffs and the points are re-derived from the scores of the pairs of the resampled events.
+
+*Trivial classifiers of a score-based family.* The family is the set of threshold classifiers {score ≥ c : c ∈ ℝ ∪ {+∞}}. It therefore contains "predict all pairs dependent" (the cutoff at the smallest observed score, already one of the observed cutoffs) and "predict no pair dependent" (the cutoff +∞, whose inclusion is a **standard mathematical consequence of the definition of a threshold family**, not tuning and not a threshold added after the freeze). Consequently the points (FPR_w, recall_w) = (0, 0) and (1, 1) always belong to the family of a score-based method, and **NO REACHABLE cannot arise from the way the family of a score-based method is defined**.
+
+*Grid-based methods* (B4-tuned; any candidate whose output is a finite set of settings rather than a score). The family is the **pre-registered finite set of settings** — for B4-tuned the threshold grid of §7.1 with ER-B4 at θ = 0.50 (§13.4) — and nothing else; no trivial point is added, because the pre-registered definition of the family does not contain one. A grid that does not bracket FPR_w = 10% yields NO REACHABLE; this is a property of the pre-registered grid, checked on the burned pilot events before the stage-1 freeze (§10.8).
+
+No point or setting is added, removed or modified after the freeze, and the same rule is applied in every bootstrap replicate.
 
 **Statistics of a point.** (FPR_w, recall_w) of §5.5, computed on the events under consideration (the full test split, or a bootstrap resample).
 
@@ -396,9 +411,14 @@ Same-event pairs of the **test** split in the cells of §5.5 (PC1–PC6), with t
    **R_10 = (1 − λ)·R_a + λ·R_b.**
 3. **No reachable point.** If every F_i < F* or every F_i > F*, the method has **NO REACHABLE 10% OPERATING POINT**. R_10 is undefined; nothing is extrapolated beyond the observed frontier and no recall is assigned.
 
-**Mathematical basis.** FPR_w and recall_w are weighted means (fixed cell weights, equal-weight average over events) of per-pair predicted-positive indicators. They are therefore **linear** in the per-pair prediction probabilities. A classifier that uses point b with probability λ, either as one global Bernoulli draw or independently pair by pair, has per-pair prediction probabilities (1 − λ)·1[a] + λ·1[b], and by linearity its expected statistics are the same convex combinations of the statistics of a and b. The pair (F*, R_10) is therefore an **achievable expected operating point** on the segment between two achievable points; nothing outside the observed frontier is assumed. Because F_a < F* < F_b and recall is increasing along the frontier, R_10 ≥ R_a: the rule never gives a method less than "the highest recall subject to FPR_w ≤ 0.10", and gives more to a coarse family exactly by the amount that the discretization had withheld. The evaluation uses the **expectation**: **no random number is drawn and no seed is involved**; R_10 is a deterministic function of the frozen family and of the events.
+**Mathematical basis.** FPR_w and recall_w are weighted means (fixed cell weights, equal-weight average over events) of per-pair predicted-positive indicators. They are therefore **linear** in the per-pair prediction probabilities. A classifier that uses point b with probability λ, either as one global Bernoulli draw or independently pair by pair, has per-pair prediction probabilities (1 − λ)·1[a] + λ·1[b], and by linearity its expected statistics are the same convex combinations of the statistics of a and b. The pair (F*, R_10) is therefore an **achievable expected operating point** on the segment between two achievable points; nothing outside the observed frontier is assumed. The relation between R_10 and "the highest recall subject to FPR_w ≤ 0.10" is stated and proved in Proposition 1. The evaluation uses the **expectation**: **no random number is drawn and no seed is involved**; R_10 is a deterministic function of the frozen family and of the events.
+
+**Proposition 1.** Let q = max{ recall_w(p) : p in the family, FPR_w(p) ≤ F* } (defined when at least one point of the family has FPR_w ≤ F*). Whenever R_10 is defined, **R_10 ≥ q; R_10 = q if and only if a frontier point has FPR_w exactly F*, and R_10 > q otherwise.**
+*Proof.* (i) Let p be a feasible family point with recall q. If p is dominated, some point p′ has FPR_w(p′) ≤ FPR_w(p) ≤ F* and recall_w(p′) ≥ q; p′ is feasible, so by the maximality of q its recall is q. Repeating on the finite family reaches a non-dominated point with FPR_w ≤ F* and recall q. Hence the best feasible recall among the frontier points is q. (ii) On the frontier the recall strictly increases with FPR_w, so among the feasible frontier points (those with F_i ≤ F*) the best is the one with the largest index. In case 1 of the rule it is the exact point; in case 2 it is point a. So R_i = q in case 1 and R_a = q in case 2. (iii) In case 1, R_10 = R_i = q. In case 2, R_10 = R_a + λ(R_b − R_a) with λ ∈ (0, 1) and R_b > R_a, hence R_10 > R_a = q. ∎ The proposition says nothing for NO REACHABLE, where R_10 is undefined.
 
 **Other statistics at the same point.** Any other statistic that is linear in the predicted-positive indicators — FPR_k on N_k (S-d), recall per class, FPR in each cell, and the per-event values — is evaluated at the **same two points a and b with the same λ** of the pooled FPR_w frontier: (1 − λ)·stat_a + λ·stat_b. For per-event values the λ is the one computed on the pooled sample, so the mean of the per-event values equals R_10.
+
+**λ is determined exclusively by the pooled FPR_w frontier of the method.** It is not recomputed for any N_k, any cell, any class or any other statistic, and a statistic cannot choose its own randomization. Therefore the three hard-negative sets cannot be optimized separately, and S-d compares methods on FPR_k at the operating point already fixed by the pooled FPR_w. The reference baseline R* has its own λ, computed by the same rule from its own pooled FPR_w frontier.
 
 **Where R_10 is used.** Wherever this specification says "recall (or FPR) at FPR_w = 10%": S-b, S-d, K1–K3; C6, C7 and C11 (on dev, applied to the dev events, out-of-fold for supervised scores); the selection of the primary candidate and of the B5 prompt (on dev); and the stage-2 estimates of §10.3. The frozen threshold of §7.1 is **not** defined by this rule.
 
@@ -428,7 +448,15 @@ Recall_w, FPR_w, precision and F1 (these depend on the constructed prevalence an
 A method with no reachable point is reported with the text **NO REACHABLE 10% OPERATING POINT** in the recall column; **no interpolated or extrapolated recall is assigned to it.** The number of bootstrap replicates in which a method had no reachable point (§8.4) is reported.
 
 ### 8.4 Uncertainty and paired bootstrap
-- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference. **The equal-FPR rule of §8.2.1 is applied separately inside every bootstrap replicate, for each method:** (1) the (FPR_w, recall_w) of every point of the method's frozen family are recomputed on the resampled events; (2) the non-dominated frontier is rebuilt; (3) the points adjacent to FPR_w = 10% are found; (4) λ is computed; (5) R_10 of that replicate is computed; (6) the paired difference of the replicate is taken between the R_10 values. **λ is never computed once on the full test sample and reused across replicates**: the uncertainty about the position of the operating points propagates into the interval. LB and UB denote the 2.5th and 97.5th percentiles; the treatment of replicates in which a method has no reachable point is fixed in §9.7.
+- 95% percentile confidence intervals by **paired bootstrap resampling of events** (10,000 resamples, fixed seed). In each replicate the same resampled events are used for both methods of a difference. **The equal-FPR rule of §8.2.1 is applied separately inside every bootstrap replicate, for each method:** (1) the (FPR_w, recall_w) of every point of the method's frozen family are recomputed on the resampled events; (2) the non-dominated frontier is rebuilt; (3) the points adjacent to FPR_w = 10% are found; (4) λ is computed; (5) R_10 of that replicate is computed; (6) the paired difference of the replicate is taken between the R_10 values. **λ is never computed once on the full test sample and reused across replicates**: the uncertainty about the position of the operating points propagates into the interval.
+- **Quantile definition.** For B values v_1 ≤ … ≤ v_B, Q_p = v_(⌈p·B⌉) (nearest rank). The endpoints use p = 0.025 and p = 0.975; with B = 10,000 they are v_(250) and v_(9750).
+- **Defined and undefined replicates.** A replicate of a difference (recall difference Δ_X, or an FPR difference on N_k) is **defined** if both methods have a reachable 10% operating point in that replicate, and **undefined** otherwise.
+- **Conservative partial-identification bootstrap interval (CPI-95).** A recall difference and an FPR difference are each a difference of two quantities in [0, 1], so each lies in [−1, +1]. For the **lower** endpoint every undefined replicate is given the value **−1**; for the **upper** endpoint every undefined replicate is given the value **+1**:
+  LB\* = Q_0.025 of { Δ^(b) if replicate b is defined, −1 otherwise },
+  UB\* = Q_0.975 of { Δ^(b) if replicate b is defined, +1 otherwise }.
+  No replicate is dropped and no favourable value is imputed. Equivalently, LB\* = −1 if and only if at least ⌈0.025·B⌉ replicates are undefined, and UB\* = +1 if and only if at least B − ⌈0.975·B⌉ + 1 replicates are undefined.
+- **Why it is a bound.** Every quantile is non-decreasing in each of its entries. For **any** assignment of values in [−1, +1] to the undefined replicates, the percentile lower endpoint is at least LB\* and the percentile upper endpoint is at most UB\*. The interval [LB\*, UB\*] therefore contains the percentile interval of every possible completion: it is a worst-case (Manski-type partial-identification) interval, and it is **not** called a percentile bootstrap confidence interval except when no replicate is undefined, in which case it coincides with the ordinary 95% percentile interval. The fraction u of undefined replicates is reported for every comparison and for every method.
+- **Use in the criteria.** LB\* and UB\* denote the endpoints of CPI-95. S-b uses LB\*; K1 and K2 use UB\*; S-d uses UB\*; the FPR-difference clause of K3 uses LB\*. Because undefined replicates are counted against the favourable direction in each case, they penalize SUCCESS and they penalize KILL alike. The interval of FPR_w(P) at its frozen threshold (S-c, K3) involves no operating point to reach and is an ordinary percentile interval.
 - Non-deterministic methods are run 5 times; the per-pair score is the mean of the 5 runs, and the range of the metrics is reported.
 
 ### 8.5 Partition metrics and origin count
@@ -450,7 +478,7 @@ Every LLM-based method (the candidate if LLM-based, and B5) is run with its main
 
 ## 9. Success, kill and inconclusive criteria — fixed before the experiment
 
-All statements refer to the **primary candidate** P and to the baseline set 𝔅 of §7.1. Δ_X = R_10(P) − R_10(X), the difference of the equal-FPR recalls of §8.2.1 on test, with the paired event bootstrap of §8.4.
+All statements refer to the **primary candidate** P and to the baseline set 𝔅 of §7.1. Δ_X = R_10(P) − R_10(X), the difference of the equal-FPR recalls of §8.2.1 on test, with the paired event bootstrap of §8.4. LB\* and UB\* are the endpoints of the conservative partial-identification bootstrap interval CPI-95 of §8.4 (equal to the ordinary 95% percentile interval when no replicate is undefined).
 
 ### 9.0 Statistical status of the intervals
 The 95% bootstrap intervals are **descriptive intervals used inside a pre-registered decision rule**. EP-002 does **not** present them as hypothesis tests with control of the family-wise error rate, and no multiplicity-adjusted p-values or simultaneous-inference claims are made. The rule combines many comparisons (up to 5 baselines, 3 hard-negative sets, up to 4 prompt formulations): SUCCESS is an **intersection** of per-comparison conditions and KILL is a **union** (any single demonstrated failure). The operating characteristics of the rule — the probability of SUCCESS, of KILL and of INCONCLUSIVE under stated scenarios — are computed by the simulation of §10 and reported, but are **not** gates.
@@ -459,17 +487,17 @@ The decision is fully pre-registered: **one primary candidate**; selection **on 
 
 ### 9.1 SUCCESS (H1 supported on synthetic data) — all must hold
 - **S-a Validity.** Checks C1–C16 passed (C11 = headroom, on dev).
-- **S-b Recall (criterion S1).** For **every** X ∈ 𝔅 (𝔅 as available, §9.6): Δ̂_X ≥ 0.20 **and** LB(Δ_X) > 0. The value 0.20 is the minimum effect of interest and is frozen before the dataset is generated.
+- **S-b Recall (criterion S1).** For **every** X ∈ 𝔅 (𝔅 as available, §9.6): Δ̂_X is defined, Δ̂_X ≥ 0.20 **and** LB\*(Δ_X) > 0. The value 0.20 is the minimum effect of interest and is frozen before the dataset is generated.
 - **S-c FPR guard.** FPR_w(P) at its **dev-frozen threshold** on test is ≤ 0.15 (the operating point plus a 5-point tolerance). This is a safety guard; the scientific comparison is the equal-FPR comparison of S-b.
-- **S-d Hard negatives (non-inferiority).** For each k ∈ {I1, I2, I3}, at the equal-FPR operating point, UB of the paired difference FPR_k(P) − FPR_k(R*) is ≤ +0.05, where R* is the baseline with the highest recall_w at equal FPR on dev, designated on dev before the freeze.
+- **S-d Hard negatives (non-inferiority).** For each k ∈ {I1, I2, I3}, at the equal-FPR operating point, UB\* of the paired difference FPR_k(P) − FPR_k(R*) is ≤ +0.05 (both FPR_k evaluated at the operating point fixed by the pooled FPR_w of each method, §8.2.1), where R* is the baseline with the highest recall_w at equal FPR on dev, designated on dev before the freeze.
 - **S-e Robustness.** S-b to S-d hold for each of the four prompt formulations (§8.7), when P or B5 is LLM-based.
 - **S-f Cost.** Measured on a fixed random sample of 200 dev pairs: ≤ 2 seconds per pair on a single consumer machine, **or** ≤ USD 0.01 per pair through an API.
 
 ### 9.2 KILL — any one is sufficient (and N_test meets the power rule, §10)
 Each kill criterion is the demonstrated opposite of a success criterion, so that an uncertain result is inconclusive rather than a kill.
-- **K1 No margin over a similarity baseline.** For some X ∈ {B1, B2, B3, B4-tuned}: UB(Δ_X) < 0.20.
-- **K2 A prompt is enough.** For B5-score: UB(Δ_B5) < 0.20. (The local-model caveat of §14 applies.)
-- **K3 False positives.** FPR_w(P) at its frozen threshold has LB(95%) > 0.15, or for some k the LB of FPR_k(P) − FPR_k(R*) is > +0.05.
+- **K1 No margin over a similarity baseline.** For some X ∈ {B1, B2, B3, B4-tuned}: Δ̂_X is defined and UB\*(Δ_X) < 0.20.
+- **K2 A prompt is enough.** For B5-score: Δ̂_B5 is defined and UB\*(Δ_B5) < 0.20. (The local-model caveat of §14 applies.)
+- **K3 False positives.** FPR_w(P) at its frozen threshold has an ordinary 95% percentile lower endpoint > 0.15, or for some k the LB\* of FPR_k(P) − FPR_k(R*) is > +0.05.
 - **K4 No separation of hard negatives.** The AUC of P separating the positive cell R–D from the negative sets N_{I1}, N_{I2}, N_{I3}, restricted to the cell R–D, has a bootstrap CI that includes 0.5.
 - **K5 Fragility.** K1–K4 are met under any of the four prompt formulations (§8.7).
 - **K6 Cost.** The cost bounds of S-f cannot be met.
@@ -492,8 +520,8 @@ The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagn
 
 ### 9.7 If a method has no reachable 10% operating point
 1. **On the full test sample.** If R_10 is undefined for P or for some X ∈ 𝔅, then Δ̂_X is undefined: S-b is **not met**, the comparison is reported as NO REACHABLE 10% OPERATING POINT with no recall assigned, and K1 or K2 **cannot fire** for that X. The outcome is then at best INCONCLUSIVE unless another kill criterion applies.
-2. **In a bootstrap replicate.** A replicate in which P or X has no reachable point is **kept as undefined** (not dropped, not imputed). When LB is computed it is ordered below every defined value; when UB is computed it is ordered above every defined value. The interval therefore widens, which is conservative for both success and kill. The number of undefined replicates is reported.
-3. **On dev.** A baseline with no reachable point on dev is reported and excluded from the maxima of C6, C7 and C11, and the project owner reviews the case before the baselines are frozen (§15, step 4).
+2. **In a bootstrap replicate.** A replicate in which P or X has no reachable point is **undefined** and is handled **only** by the conservative partial-identification bootstrap interval CPI-95 of §8.4: the value −1 for the lower endpoint, the value +1 for the upper endpoint, no replicate dropped, no value imputed in a favourable direction. The fraction u of undefined replicates is reported. Consistency with the criteria: S-b (LB\*), K1 and K2 (UB\*), S-d (UB\*) and the FPR-difference clause of K3 (LB\*) all use the endpoint that counts an undefined replicate **against** the conclusion being tested, so undefined replicates penalize SUCCESS and penalize KILL; if u is large enough the endpoint is −1 or +1 and the corresponding criterion cannot be met.
+3. **On dev — conservative and symmetric.** Only a grid-based family can lack a reachable point (§8.2.1). A baseline of 𝔅 with no reachable 10% point on dev is **unavailable at the operating point**. It is **not excluded** from the gates, because excluding the strongest baseline would lower the maximum over baselines and make C7 and C11 easier to pass. Instead the gates that use the maximum over baselines — **C6, C7 and C11 — are NOT EVALUABLE and are treated as not passed (INCONCLUSIVE)**; the freeze cannot proceed and the experiment stops with the outcome INCONCLUSIVE (baseline unavailable at the operating point on dev). No grid, setting or baseline is changed after the stage-1 freeze to cure this. The rule is symmetric: a **candidate variant** with no reachable point on dev is **ineligible** for selection. No method can gain by being unreachable. The preventive measure is the pilot check of §10.8.
 
 ---
 
@@ -527,6 +555,7 @@ Exactly these quantities, and no others, may be estimated from the dev split:
 - J = {1} if neither P nor B5 is LLM-based, otherwise J = {1, 2, 3, 4} (the four formulations).
 - Statistic types: d_X for each available X ∈ 𝔅 (recall difference), f_k for k ∈ {I1, I2, I3} (paired FPR difference versus R*), g (FPR_w of P at its frozen threshold). With n_𝔅 = |𝔅 available| the number of types is T = n_𝔅 + 3 + 1, and the number of statistics is m = T·|J|.
 - The per-event values of d_X and f_k are the per-event values at the equal-FPR operating point of §8.2.1: for a randomized point, (1 − λ)·value_a + λ·value_b with λ computed on the pooled sample, so that their mean over events is R_10 (or the corresponding mixture). Algorithm P is unchanged.
+- **What enters Algorithm P and what does not.** The λ of a sample is derived from the operating points observed **in that sample**: on dev, in the stage-2 estimation of §10.3; on test, only in the final evaluation. This is consistent with §8.2.1: the per-event dev values used for σ̂ and ρ̂ are the mixture values at the dev λ. **Algorithm P is a simulated model of the distribution of the final per-event statistics at the matched operating point.** It receives neither a test λ nor any test operating point and does not simulate whether operating points are reachable; **no test information enters the choice of N**. Its percentile rule is the nearest-rank definition of §8.4, and when no replicate is undefined CPI-95 coincides with it, so Algorithm P models the case u = 0. If undefined replicates occur in the real evaluation the real power can be lower than the simulated one; this is not hidden, because a sufficiently large u forces LB\* = −1 or UB\* = +1 and the criterion fails.
 - Per-event vector z_e ∈ ℝ^m is drawn from **N(μ, Σ)** (a normal approximation, declared as an arbitrary assumption: it ignores the boundedness of the statistics).
 - **Means:** μ = Δ_design for every d_X; μ = +0.02 for every f_k; μ = 0.10 for g. These come from §10.2, never from dev.
 - **Standard deviations:** σ_Δ,used = max(max_X σ̂_Δ,X, 0.15) for every d_X; σ_f,used = max(max_k σ̂_f,k, 0.10) for every f_k; σ_g,used = max(σ̂_g, 0.05).
@@ -582,7 +611,7 @@ A back-of-envelope check (illustrative only, to be replaced by Algorithm P): for
 - **If Algorithm P returns NONE:** the outcome is INCONCLUSIVE-UNDERPOWERED (§9.4) and **no criterion is changed**.
 
 ### 10.8 Pilot
-A pilot of 3–5 events, **burned** (they never enter dev or test), is used **only** to verify the pipeline, verify the context audit and the other mechanical checks, measure generation and scoring times, identify mechanical errors, and verify B5 eligibility (token log-probability access, single-token Yes/No forms, coverage). It is **not** used to estimate the effect of any candidate, and not used to estimate variance.
+A pilot of 3–5 events, **burned** (they never enter dev or test), is used **only** to verify the pipeline, verify the context audit and the other mechanical checks, measure generation and scoring times, identify mechanical errors, verify B5 eligibility (token log-probability access, single-token Yes/No forms, coverage), and verify that every grid-based baseline (B4-tuned) **brackets FPR_w = 10% on the pilot events**; a grid that does not bracket may be corrected **only before the stage-1 freeze**, using the burned pilot events, and never afterwards. It is **not** used to estimate the effect of any candidate, and not used to estimate variance.
 
 ---
 
@@ -613,6 +642,8 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | Normal approximation of per-event statistics | yes | MET | yes, declared | stage 1 | no |
 | Cell weights 9/25 and 16/25 | yes | **MAT** (positive counts per cell) | no | with the design | no |
 | Equal-FPR rule: non-dominated frontier and expected randomization between adjacent points, F* = 0.10 (no new numeric constant) | yes | **MAT** (linearity of the statistics) / MET (frontier convention) | no | stage 1 | no |
+| Bootstrap quantile rule (nearest rank) and CPI-95 substitution values −1 / +1 | yes | **MAT** (the bounds of the difference of two quantities in [0, 1]) | no | stage 1 | no |
+| Trivial classifiers of a score-based family (cutoffs at the smallest observed score and +∞) | yes | **MAT** (definition of a threshold family) | no | stage 1 | no |
 | Headroom threshold 0.20 (C11) | yes | **MAT** (necessary condition derived from the effect of interest) | no | with the design | no |
 | C6 rule "below best baseline + 0.20" | yes | MET (reuses the effect of interest) | partly | before dataset | no |
 | C7 difficulty floor recall_w ≥ 0.8 | yes | MET (inherited) | yes | before dataset | no |
@@ -718,7 +749,7 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 ## 15. Reproducibility, order of execution and time box
 
 **Order of execution**
-1. Pilot (3–5 burned events): pipeline, audit, timing, B5 eligibility.
+1. Pilot (3–5 burned events): pipeline, audit, timing, B5 eligibility, bracketing of FPR_w = 10% by every grid-based baseline.
 2. **Stage-1 freeze** (tag `ep002-stage1`): configuration, constants, grid, rules, selection rule, baseline set, O1 specification, B5 model record and template, N_dev, N_max, frontier-subset rule, masking rule; planning run of Algorithm P per grid column.
 3. Generate the **dev** split; ledger; mechanical checks (C1–C3, C12, C14–C16).
 4. Calibrate the **baselines** on dev (B5 prompt variants up to K = 10, thresholds, B4-tuned grid) and **freeze them** (tag `ep002-baselines`). If the dev split is regenerated (§5.6), the baselines are recalibrated from scratch under the same budget on the new dev, and only the baselines frozen afterwards are used.
@@ -747,7 +778,9 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 
 **Closed in v0.5 (the remaining blocking issue of the review of v0.4):** the equal-FPR comparison is formalized for families of discrete operating points by randomization between adjacent non-dominated operating points, applied identically to every method and separately inside every bootstrap replicate, with explicit limit cases and a reporting table (§8.2.1, §8.3, §8.4, §9.7). S1, the +0.20, FPR 10%, the +5-point guard and margin, K = 10, candidate selection, test once, Algorithm P, C11 and B4-faithful / B4-core / B4-tuned / ER-B4 are **not** changed.
 
-**Items for the final review** (introduced in v0.3, v0.4 and v0.5; none changes a threshold):
+**Closed in v0.6 (the two blocking issues of the review of v0.5):** undefined bootstrap replicates are handled by a fully specified conservative partial-identification bootstrap interval (§8.4, §9.7); the operating-point family of score-based methods is defined precisely as finite on any realized sample, with its frozen scoring rules and its trivial classifiers (§8.2.1). Also made explicit: Proposition 1 with its proof (R_10 versus the best feasible recall); λ determined only by the pooled FPR_w frontier; the distinction between sample λ and Algorithm P; and a conservative, symmetric rule for baselines without a reachable point on dev. The principle of the equal-FPR rule, S1, the +0.20, FPR 10%, the +5-point guard and margin, K = 10 and the other approved elements are **not** changed.
+
+**Items for the final review** (introduced in v0.3 to v0.6; none changes a threshold):
 1. Kill criteria operationalized as UB(Δ) < 0.20, each kill being the demonstrated opposite of a success criterion (§9.2).
 2. INCONCLUSIVE-UNDERPOWERED applies whatever the observed statistics (§9.4).
 3. C11 (headroom) failure ends the experiment without regeneration (§5.6).
@@ -759,12 +792,23 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 9. The false-kill probability of the union rule K1–K5 is reported by the simulation but not controlled (§9.0).
 10. **Uniform application of R_10.** The equal-FPR rule is applied to continuous-score methods as well, and to the dev quantities of C6, C7, C11 and of selection, so that the rule is identical for all methods; for fine continuous frontiers the difference from "highest recall with FPR_w ≤ 0.10" is at most one frontier step (§8.2.1).
 11. **Non-dominated frontier.** "Empirical frontier" is read as the set of non-dominated points; this gives a mild optimism to families with non-nested points (B4-tuned) and is conservative with respect to a continuous candidate (§8.2.1).
-12. **Consequences of NO REACHABLE** (§9.7): S-b not met, no kill, undefined replicates widen the interval, dev baselines excluded from the maxima with owner review. These rules were needed to make the specification complete and are conservative; they were not in the request.
+12. **Consequences of NO REACHABLE** (§9.7, revised in v0.6): on the full test sample S-b is not met and no kill fires; in bootstrap replicates the conservative partial-identification interval CPI-95 of §8.4 applies; on dev the gates C6, C7 and C11 become NOT EVALUABLE and the experiment stops, with no exclusion of the baseline.
+14. **CPI-95** is a worst-case interval, wider than a percentile interval whenever replicates are undefined; it is not presented as a confidence interval in that case (§8.4).
+15. **Trivial classifiers** (predict none, predict all) are members of every score-based family as a mathematical consequence of the definition of a threshold family; they are not added to grid-based families (§8.2.1).
+16. **Pilot bracketing check:** the grid of B4-tuned may be corrected before the stage-1 freeze, using the burned pilot events, so that it brackets FPR_w = 10% (§10.8). This is the only point at which the grid may change.
 13. The randomization is a device for defining an achievable **expected** operating point; no random draw is made in evaluation, and the **frozen deployable thresholds are unchanged** (§7.1).
 
 ---
 
 ## Changelog
+
+**0.6 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run. Closes the two blocking issues of the review of v0.5; nothing else is changed.
+1. **Undefined bootstrap replicates (§8.4, §9.7).** Quantile defined by nearest rank; the conservative partial-identification bootstrap interval CPI-95 (−1 for the lower endpoint, +1 for the upper endpoint, nothing dropped or imputed favourably) with its justification as a worst-case bound; the fraction of undefined replicates is reported; consistency with S-b, K1/K2, S-d, K3 and Algorithm P stated; the interval is no longer called a percentile CI when replicates are undefined.
+2. **Operating-point family of score-based methods (§8.2.1).** Frozen scoring rule per method (B1, B2, B3, B5-score, primary candidate); the family is finite on any realized sample, one point per distinct observed cutoff with ties as one cutoff; the trivial classifiers are members as a standard mathematical consequence; the phrase "the points are simply dense" is removed; grid-based families are the pre-registered settings and nothing else.
+3. **Proposition 1 (§8.2.1).** Formal statement and proof that R_10 is never below the best feasible recall, with equality only when an exact point exists.
+4. **λ for S-d (§8.2.1, §9.1).** λ is determined exclusively by the pooled FPR_w frontier and is not recomputed for any N_k or other statistic.
+5. **Algorithm P (§10.4).** Distinction between the λ of a sample and the simulated model; no test information enters N; P models the case with no undefined replicate.
+6. **Dev without a reachable point (§9.7.3, §10.8, §15).** Conservative and symmetric rule: the gates C6, C7, C11 become NOT EVALUABLE and the experiment stops; no exclusion of the baseline; an unreachable candidate variant is ineligible; the pilot checks the bracketing of FPR_w = 10% by grid-based baselines before the stage-1 freeze.
 
 **0.5 (2026-10-02)** — specification text only; no code, no dataset, no benchmark run. Formalizes the equal-FPR comparison; nothing else is changed.
 1. **Equal-FPR rule (§8.2.1).** Operating-point family, non-dominated empirical frontier, exact point when FPR_w = 0.10 exists, otherwise randomization between the two adjacent points with λ = (0.10 − F_a)/(F_b − F_a) and R_10 = (1 − λ)R_a + λR_b; limit cases; "NO REACHABLE 10% OPERATING POINT" with no extrapolation; the same rule for every method; expectation used, no random draw; other linear statistics evaluated at the same two points and the same λ.
