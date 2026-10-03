@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.7 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
-| Version | 0.7 (2026-10-03) — see Changelog at the end |
+| Status | **DRAFT — v0.8 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Version | 0.8 (2026-10-03) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -333,7 +333,7 @@ The model's answer starts immediately after the chat template's generation promp
 - **Symmetry:** every pair is scored in both orders and s_sym = (s(T1, T2) + s(T2, T1)) / 2. No order seed is needed.
 - **Use of the score:** the score is used **only to order pairs**. The comparison is made at equal FPR on each method's own ordering, so no comparability of score scales across models or tokenizations is required or claimed. Ties at a cutoff are included or excluded as a group.
 
-**Tuning budget.** Up to K = 10 prompt variants (wording and delimiters, always keeping the one-word Yes/No answer), logged; the variant with the highest dev recall_w at FPR_w = 10% is the main prompt.
+**Tuning budget.** Up to K = 10 prompt variants (wording and delimiters, always keeping the one-word Yes/No answer), logged; the variant with the highest dev R_10 (§8.2.1) is the main prompt (formulation j = 0). The selection uses formulation 0 only; the paraphrases B5_1, B5_2, B5_3 are written once at the baseline freeze, before any candidate is explored, and are not tuned (§8.7).
 
 **B5-verdict.** The same prompt answered in three values yes / no / uncertain (the "uncertain" option added to the instruction); "uncertain" counts as "not dependent" (conservative for FPR); the opposite mapping is reported alongside. No threshold applies. It is a qualitative kill test and not an input of the statistical comparison.
 
@@ -351,7 +351,7 @@ The model's answer starts immediately after the chat template's generation promp
 - **Operating-point rule:** on the pooled out-of-fold scores, the quantity R_10 of §8.2, computed by the same rule as for every other method (the residual optimism of fitting the operating point on dev is symmetric and, for the baselines, favours them, which makes C11 conservative).
 - recall_w and FPR_w as in §5.5, event-macro averaged; the bootstrap CI is over events on the out-of-fold scores (it ignores training variability; stated).
 
-**C11.** headroom = recall_w(O1) − max over the **frozen baselines** {B1, B2, B3, B4-tuned, B5-score} of recall_w at FPR_w = 10% on dev. The maximum is taken **only over baselines that are pre-specified in §7.1, whose tuning budget (K = 10 for B5) was spent and frozen before C11 is computed (tag `ep002-baselines`)**, and never over a candidate, a candidate variant or any design explored after the baselines were frozen. Pass if the point estimate is ≥ 0.20 (the effect of interest). A failure ends the experiment (§5.6).
+**C11.** headroom = recall_w(O1) − max over the **frozen baselines** {B1, B2, B3, B4-tuned, B5-score} of R_10 on dev (§8.2.1; B5-score under formulation 0, §8.7). The maximum is taken **only over baselines that are pre-specified in §7.1, whose tuning budget (K = 10 for B5) was spent and frozen before C11 is computed (tag `ep002-baselines`)**, and never over a candidate, a candidate variant or any design explored after the baselines were frozen. Pass if the point estimate is ≥ 0.20 (the effect of interest). A failure ends the experiment (§5.6).
 
 **Reference R1.** The same procedure with all text features of the pair. R1 is **not** an upper bound on anything (it can learn dataset artefacts) and has no gate role; if R1 is far above O1, the signal beyond fact content is flagged for review.
 
@@ -487,8 +487,18 @@ Within S the truth is the partition of §3.3 with 5 origin blocks per event. Rep
 - **Unique-detail masking (D4):** the frozen primary candidate and the frozen baselines are evaluated on a deterministic masked copy of the test split in which every token of a fact designated as a unique detail (exact fictional string) is replaced by a neutral placeholder. **No pass/fail role.** It shows whether a result depends artificially on the way unique details are built into the dataset. No parameter is re-tuned.
 - **Retention (D8):** recall per bin of retained unique details.
 
-### 8.7 Prompt robustness
-Every LLM-based method (the candidate if LLM-based, and B5) is run with its main prompt and with 3 paraphrases of it. The paraphrases are written **once, at the freeze, before the test split exists**, as rewordings of the selected prompt's instruction sentence; **all three are used, none is selected, dropped or replaced after being written**. Thresholds are re-fitted on dev for each paraphrase and frozen. Success criteria are evaluated **separately for each of the four formulations** and success requires all four (§9).
+### 8.7 Prompt robustness: formulation instances
+**Formulations.** j ∈ {0, 1, 2, 3}. j = 0 is the main prompt, selected on dev under §7.2 and §7.3 using formulation 0 only. j = 1, 2, 3 are the three paraphrases, written **once**, as rewordings of the selected prompt's instruction sentence: those of **B5 at the baseline freeze** (§15, step 4), before any candidate is explored, and those of the **candidate at the candidate freeze** (§15, step 7), in both cases before the test split exists. Writing the B5 paraphrases before any candidate result exists prevents them from being shaped by knowledge of how the candidate performs. **All three are used, none is selected, dropped or replaced after being written**, and none is chosen by performance.
+
+**Which methods depend on j.** B5-score, whenever it is available (it is LLM-based), and the primary candidate if it is LLM-based. B1, B2, B3, B4-tuned and a non-LLM candidate are identical in every formulation. J = {0, 1, 2, 3} if the candidate or an available B5-score is LLM-based, otherwise J = {0}.
+
+**Formulation instance.** For each j ∈ J the instance j consists of P_j (the candidate under formulation j, or P itself if it is not LLM-based), B5_j (B5-score under formulation j) and the formulation-independent baselines. Thresholds are re-fitted on dev, mechanically, for each LLM-based method and each j and frozen. **Every criterion of §9 is evaluated within one instance and never mixes formulations: P_j is compared with B5_j, never with B5_j′.** The four instances are not four runs of the candidate: a formulation changes the candidate **and** B5 together.
+
+**The reference baseline R\*.** R* is a baseline **identity**, not an instance. It is designated **once**, at the baseline freeze (§15, step 4), on dev and under formulation 0: the baseline of 𝔅 (as available) with the highest dev R_10, ties broken by the order B1, B2, B3, B4-tuned, B5-score. It does not depend on the candidate, on any test result or on any formulation other than 0, and it is **not re-selected per formulation**. In instance j the reference is R*_j = R* if R* is formulation-independent, and R*_j = B5_j if R* = B5-score. R*_j is used by S-d and by K3 in instance j.
+
+**Common resamples.** The same 10,000 resampled event multisets (same seed, §8.4) are used for every method, every comparison and every instance, so that all differences are paired in the same way.
+
+The decision rule over the instances is fixed in §9.8.
 
 ---
 
@@ -502,28 +512,29 @@ The 95% bootstrap intervals are **descriptive intervals used inside a pre-regist
 The decision is fully pre-registered: **one primary candidate**; selection **on dev only** by a rule frozen at stage 1; the test evaluated **once**; secondary candidates never promotable; B5 and B4-tuned with pre-registered tuning budgets; no baseline added after the stage-1 freeze or after the test.
 
 ### 9.1 SUCCESS (H1 supported on synthetic data) — all must hold
+S-b, S-c and S-d are evaluated **within a formulation instance j** (§8.7); the index j is omitted below. In an instance, P, B5 and R* stand for P_j, B5_j and R*_j.
 - **S-a Validity.** Checks C1–C16 passed (C11 = headroom, on dev).
 - **S-b Recall (criterion S1).** For **every** X ∈ 𝔅 (𝔅 as available, §9.6): Δ̂_X is defined, Δ̂_X ≥ 0.20 **and** LB\*(Δ_X) > 0. The value 0.20 is the minimum effect of interest and is frozen before the dataset is generated.
 - **S-c FPR guard.** FPR_w(P) at its **dev-frozen threshold** on test is ≤ 0.15 (the operating point plus a 5-point tolerance). This is a safety guard; the scientific comparison is the equal-FPR comparison of S-b.
-- **S-d Hard negatives (non-inferiority).** For each k ∈ {I1, I2, I3}, at the equal-FPR operating point, UB\* of the paired difference FPR_k(P) − FPR_k(R*) is ≤ +0.05 (both FPR_k evaluated at the operating point fixed by the pooled FPR_w of each method, §8.2.1), where R* is the baseline with the highest recall_w at equal FPR on dev, designated on dev before the freeze.
-- **S-e Robustness.** S-b to S-d hold for each of the four prompt formulations (§8.7), when P or B5 is LLM-based.
+- **S-d Hard negatives (non-inferiority).** For each k ∈ {I1, I2, I3}, at the equal-FPR operating point, UB\* of the paired difference FPR_k(P) − FPR_k(R*) is ≤ +0.05 (both FPR_k evaluated at the operating point fixed by the pooled FPR_w of each method, §8.2.1), where R* is the reference baseline designated once on dev at the baseline freeze (§8.7).
+- **S-e Robustness.** S-b, S-c and S-d hold in **every** formulation instance j ∈ J (§8.7); formally, SUCCESS_j holds for all j ∈ J (§9.8).
 - **S-f Cost.** Measured on a fixed random sample of 200 dev pairs: ≤ 2 seconds per pair on a single consumer machine, **or** ≤ USD 0.01 per pair through an API.
 
-### 9.2 KILL — any one is sufficient (and N_test meets the power rule, §10)
-Each kill criterion is the demonstrated opposite of a success criterion, so that an uncertain result is inconclusive rather than a kill.
+### 9.2 KILL — any one is sufficient
+K1–K3 are evaluated within each formulation instance (§8.7) and K1–K5 apply only when N_test meets the power rule (§10); K6–K8 do not depend on power. Each kill criterion is the demonstrated opposite of a success criterion (K1 and K2 of S-b, K3 of S-c and S-d, K6 of S-f, K7 and K8 of S-a), so that an uncertain result is inconclusive rather than a kill.
 - **K1 No margin over a similarity baseline.** For some X ∈ {B1, B2, B3, B4-tuned}: Δ̂_X is defined and UB\*(Δ_X) < 0.20.
 - **K2 A prompt is enough.** For B5-score: Δ̂_B5 is defined and UB\*(Δ_B5) < 0.20. (The local-model caveat of §14 applies.)
 - **K3 False positives.** FPR_w(P) at its frozen threshold has an ordinary 95% percentile lower endpoint > 0.15, or for some k the LB\* of FPR_k(P) − FPR_k(R*) is > +0.05.
-- **K4 No separation of hard negatives.** The AUC of P separating the positive cell R–D from the negative sets N_{I1}, N_{I2}, N_{I3}, restricted to the cell R–D, has a bootstrap CI that includes 0.5.
-- **K5 Fragility.** K1–K4 are met under any of the four prompt formulations (§8.7).
+- **K4 — withdrawn in v0.8 (the number is not reused).** The v0.7 criterion declared a kill when the bootstrap interval of an AUC included 0.5. That is not the demonstrated opposite of any success criterion: an interval including 0.5 means uncertainty and not a demonstrated inability to separate, and an AUC significantly below 0.5 would not have fired it. The scientific decision about the hard negatives is carried by S-d (success) and K3 (kill). Nothing replaces K4.
+- **K5 Fragility (quantifier over formulations).** K1, K2 and K3 are evaluated in each instance j ∈ J. If **at least one** of K1_j, K2_j, K3_j is demonstrated for **at least one** j ∈ J, the kill is declared. K5 is the clause "for at least one j"; it is not a further condition. The precise rule is §9.8.
 - **K6 Cost.** The cost bounds of S-f cannot be met.
 - **K7 Ground truth.** Ground truth cannot be produced reliably (§5.6 exclusion limits exceeded twice).
-- **K8 Dataset validity.** The dataset fails C6, C7 or C11 and cannot be fixed within the one allowed regeneration and the time box.
+- **K8 Dataset validity.** The dataset fails C6 or C7 and cannot be fixed within the one allowed regeneration and the time box, or fails C11 (which permits no regeneration, §5.6).
 
 Removed or merged relative to v0.2: the v0.2 criteria "B4 or another open-source system performs within the CI" and "B5 performs within the CI" are now K1 and K2; "within the CI" is operationalized as UB(Δ) < 0.20. See the Changelog.
 
 ### 9.3 INCONCLUSIVE
-Neither 9.1 nor 9.2 is met within the time box (§15): reported as inconclusive with the reason. No criterion is relaxed, replaced or re-weighted after any result is seen.
+The decision rule of §9.8 yields neither SUCCESS nor KILL within the time box (§15): reported as inconclusive with the reason. No criterion is relaxed, replaced or re-weighted after any result is seen.
 
 ### 9.4 INCONCLUSIVE-UNDERPOWERED
 If the algorithm of §10.5 returns no N_test within the operational limit, the outcome is labelled INCONCLUSIVE-UNDERPOWERED **whatever the observed statistics are**. Descriptive results may be reported, cannot authorise EP-003, and cannot trigger K1–K5. Criteria K6–K8 do not depend on power and remain in force. **No criterion is modified.**
@@ -535,9 +546,29 @@ The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagn
 (1) S-b is evaluated against the baselines that are available; (2) K2 cannot be evaluated; (3) B5-verdict is reported as a qualitative result; (4) the outcome label carries the suffix "(B5 not quantitatively compared)" and the project owner must review the B5-verdict result before any success is used to authorise EP-003. The fallback is not forced into the quantitative comparison.
 
 ### 9.7 If a method has no reachable 10% operating point
-1. **On the full test sample.** If R_10 is undefined for P or for some X ∈ 𝔅, then Δ̂_X is undefined: S-b is **not met**, the comparison is reported as NO REACHABLE 10% OPERATING POINT with no recall assigned, and K1 or K2 **cannot fire** for that X. The outcome is then at best INCONCLUSIVE unless another kill criterion applies.
+1. **On the full test sample.** If R_10 is undefined for P or for some X ∈ 𝔅, then Δ̂_X is undefined (and, if P or R* is the method without a reachable point, the FPR differences of S-d are undefined too): S-b and S-d are **not met**, the comparison is reported as NO REACHABLE 10% OPERATING POINT with no recall assigned, and K1, K2 and the FPR-difference clause of K3 **cannot fire** for that X. The outcome is then at best INCONCLUSIVE unless another kill criterion applies.
 2. **In a bootstrap replicate.** A replicate in which P or X has no reachable point is **undefined** and is handled **only** by the conservative partial-identification bootstrap interval CPI-95 of §8.4: the value −1 for the lower endpoint, the value +1 for the upper endpoint, no replicate dropped, no value imputed in a favourable direction. The fraction u of undefined replicates is reported. Consistency with the criteria: S-b (LB\*), K1 and K2 (UB\*), S-d (UB\*) and the FPR-difference clause of K3 (LB\*) all use the endpoint that counts an undefined replicate **against** the conclusion being tested, so undefined replicates penalize SUCCESS and penalize KILL; if u is large enough the endpoint is −1 or +1 and the corresponding criterion cannot be met.
 3. **On dev — conservative and symmetric.** Only a grid-based family can lack a reachable point (§8.2.1). A baseline of 𝔅 with no reachable 10% point on dev is **unavailable at the operating point**. It is **not excluded** from the gates, because excluding the strongest baseline would lower the maximum over baselines and make C7 and C11 easier to pass. Instead the gates that use the maximum over baselines — **C6, C7 and C11 — are NOT EVALUABLE and are treated as not passed (INCONCLUSIVE)**; the freeze cannot proceed and the experiment stops with the outcome INCONCLUSIVE (baseline unavailable at the operating point on dev). No grid, setting or baseline is changed after the stage-1 freeze to cure this. The rule is symmetric: a **candidate variant** with no reachable point on dev is **ineligible** for selection. No method can gain by being unreachable. The preventive measure is the pre-flight feasibility check of the pilot (§10.8), which is not a guarantee.
+
+### 9.8 Global decision rule over the formulation instances
+Let J ⊆ {0, 1, 2, 3} be the set of formulation instances of §8.7 (J = {0} if neither P nor an available B5-score is LLM-based). For each j ∈ J, using the instance of §8.7 (P_j, B5_j, R*_j, the formulation-independent baselines, 𝔅 as available, §9.6):
+
+- **SUCCESS_j** ⇔ S-b ∧ S-c ∧ S-d, all evaluated in instance j.
+- **KILL_j** ⇔ K1 ∨ K2 ∨ K3, all evaluated in instance j.
+- **CONTRADICTORY_j** ⇔ SUCCESS_j ∧ KILL_j (possible only through an inconsistency of the bootstrap intervals).
+- **INCONCLUSIVE_j** ⇔ ¬SUCCESS_j ∧ ¬KILL_j.
+
+Formulation-independent quantities: A = S-a (C1–C16 passed); F = S-f (cost); KILL_ind = K6 ∨ K7 ∨ K8.
+
+**The outcome is the first of the following that applies, in this order:**
+1. **KILL_ind** (K6, K7 or K8) → **KILL**. These do not depend on power.
+2. N_test = NONE (§10.5) → **INCONCLUSIVE-UNDERPOWERED** (§9.4): K1–K5 are disabled and SUCCESS is impossible.
+3. For at least one j ∈ J, KILL_j ∧ ¬SUCCESS_j → **KILL** (K5: a failure demonstrated in **one** formulation is enough).
+4. For at least one j ∈ J, CONTRADICTORY_j → **INCONCLUSIVE** (contradictory evidence; the case is reported).
+5. A ∧ F ∧ (SUCCESS_j for **all** j ∈ J) → **SUCCESS**.
+6. Otherwise → **INCONCLUSIVE**.
+
+The logic is symmetric between the formulations: **SUCCESS requires every formulation to pass; KILL requires one formulation to give sufficient evidence of failure; INCONCLUSIVE is everything else.** If B5-score is unavailable the suffix of §9.6 is added and the sets of baselines, and hence the criteria that apply, are those available; criteria that cannot be evaluated do not fire. No rule of this subsection may be changed after a result has been seen.
 
 ---
 
@@ -568,13 +599,13 @@ Exactly these quantities, and no others, may be estimated from the dev split:
 **Not usable, ever:** the observed mean effect of P on dev (the mean of any Δ), the observed mean FPR on dev, and any dev-based selection of an assumption for being favourable. The algorithm takes only standard deviations and correlations from dev. If an observed standard deviation is below its floor, **the floor is used**.
 
 ### 10.4 Statistics and model
-- J = {1} if neither P nor B5 is LLM-based, otherwise J = {1, 2, 3, 4} (the four formulations).
+- J = {0} if neither P nor B5 is LLM-based, otherwise J = {0, 1, 2, 3} (the four formulations of §8.7, j = 0 the main prompt). The statistics of Algorithm P are those of one formulation instance each (P_j, B5_j, R*_j), consistently with §9.8. Algorithm P replicates **every** statistic type across j with common mean, standard deviation and correlation ρ_form; for a type that does not actually depend on j (for example a lexical baseline when P is not LLM-based) the replicates are in reality identical, so the simulation requires them to hold separately and is **conservative** for such types.
 - Statistic types: d_X for each available X ∈ 𝔅 (recall difference), f_k for k ∈ {I1, I2, I3} (paired FPR difference versus R*), g (FPR_w of P at its frozen threshold). With n_𝔅 = |𝔅 available| the number of types is T = n_𝔅 + 3 + 1, and the number of statistics is m = T·|J|.
 - The per-event values of d_X and f_k are the per-event values at the equal-FPR operating point of §8.2.1: for a randomized point, (1 − λ)·value_a + λ·value_b with λ computed on the pooled sample, so that their mean over events is R_10 (or the corresponding mixture). Algorithm P is unchanged.
 - **What enters Algorithm P and what does not.** The λ of a sample is derived from the operating points observed **in that sample**: on dev, in the stage-2 estimation of §10.3; on test, only in the final evaluation. This is consistent with §8.2.1: the per-event dev values used for σ̂ and ρ̂ are the mixture values at the dev λ. **Algorithm P is a simulated model of the distribution of the final per-event statistics at the matched operating point, and it yields conditional operating power (§10.1).** It receives neither a test λ nor any test operating point and does not simulate whether operating points are reachable; **no test information enters the choice of N**. Its percentile rule is the nearest-rank definition of §8.4, and when no replicate is undefined CPI-95 coincides with it, so Algorithm P models the case u = 0. If undefined replicates occur in the real evaluation the real power can be lower than the simulated one; this is not hidden, because a sufficiently large u forces LB\* = −1 or UB\* = +1 and the criterion fails.
 - Per-event vector z_e ∈ ℝ^m is drawn from **N(μ, Σ)** (a normal approximation, declared as an arbitrary assumption: it ignores the boundedness of the statistics).
 - **Means:** μ = Δ_design for every d_X; μ = +0.02 for every f_k; μ = 0.10 for g. These come from §10.2, never from dev.
-- **Standard deviations:** σ_Δ,used = max(max_X σ̂_Δ,X, 0.15) for every d_X; σ_f,used = max(max_k σ̂_f,k, 0.10) for every f_k; σ_g,used = max(σ̂_g, 0.05).
+- **Standard deviations:** the estimates σ̂ of §10.3 are computed in each formulation instance j ∈ J (§8.7), and the maxima below run over X (respectively k) **and over j ∈ J**: σ_Δ,used = max(max_{X,j} σ̂_Δ,X,j, 0.15) for every d_X; σ_f,used = max(max_{k,j} σ̂_f,k,j, 0.10) for every f_k; σ_g,used = max(max_j σ̂_g,j, 0.05).
 - **Correlations:** ρ_crit,used = min(max(ρ̂_crit, 0), 0.30); ρ_form,used = min(max(ρ̂_form, 0), 0.50) (if |J| = 1 the formulation factor is absent). Σ = D (C_crit ⊗ C_form) D, with D = diag(σ), C_crit the T×T equicorrelation matrix with ρ_crit,used, C_form the |J|×|J| equicorrelation matrix with ρ_form,used. Both are positive definite for non-negative correlations, hence so is their Kronecker product.
 
 ### 10.5 Algorithm P (deterministic)
@@ -606,7 +637,7 @@ STEP 5  (reporting, not a gate) at N = N_test, or at N_cap if N_test = NONE, rep
 OUTPUT  N_test (or NONE) and the reporting table. With the same inputs and seed the output
         is bit-for-bit reproducible.
 ```
-Criteria S-a, S-e (it enters through J), S-f and K4 are not simulated beyond what J implies: validity checks are assumed to pass, cost is deterministic, and K4 is not modelled (declared).
+Criteria S-a, S-e (it enters through J), S-f and K5–K8 are not simulated beyond what J implies: validity checks are assumed to pass and cost is deterministic (declared).
 
 ### 10.6 Sensitivity grid (planning at stage 1; not binding)
 The values below are **arbitrary assumptions about unknowns** — EP-001 provides no estimate of between-event variance — and are declared as such. At stage 1 Algorithm P is run once per column, with the column's values replacing the dev estimates, to record the planned N_test per column and to flag whether the conservative column exceeds N_cap. The columns are a sensitivity analysis, not a choice of the most convenient N. The binding run (stage 2) uses §10.3–10.5.
@@ -647,7 +678,7 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | Bootstrap resamples 10,000, seed | yes | MAT (Monte Carlo precision) | partly | before test | resamples may increase, seed not |
 | Simulation trials M = 2000; B_sim = 1000; N grid step 5 from 10; seed | yes | MAT (Monte Carlo precision) / MET | partly | stage 1 | no |
 | K = 10 variants per tuning family | yes | MET | yes | before dev exploration | no |
-| 3 prompt paraphrases (written once, at the freeze) | yes | MET | yes | at the freeze, before the test is generated | no |
+| 3 prompt paraphrases (written once: B5 at the baseline freeze, the candidate at the candidate freeze) | yes | MET | yes | at the respective freeze, before the test is generated | no |
 | N_dev ≥ 20 | yes | MET (calibration precision) | partly | stage 1 | no |
 | N_test | yes | **MAT** (output of Algorithm P) | no, given the inputs | stage 2, before test generation | no |
 | N_max (provisional 100) | yes | MET (resources) | yes | stage 1, after timing | no; reported if insufficient |
@@ -657,6 +688,7 @@ Source: **MAT** = mathematical or logical consequence of the design; **MET** = m
 | Floors σ_Δ ≥ 0.15, σ_f ≥ 0.10, σ_g ≥ 0.05; caps ρ_crit ≤ 0.30, ρ_form ≤ 0.50 | yes | MET (conservative direction) | yes | stage 1 | no |
 | Normal approximation of per-event statistics | yes | MET | yes, declared | stage 1 | no |
 | Cell weights 9/25 and 16/25 | yes | **MAT** (positive counts per cell) | no | with the design | no |
+| R* tie-break order B1, B2, B3, B4-tuned, B5-score; R* designated once under formulation 0 at the baseline freeze | yes | MET | yes (convention) | at the baseline freeze | no |
 | Equal-FPR rule: non-dominated frontier and expected randomization between adjacent points, F* = 0.10 (no new numeric constant) | yes | **MAT** (linearity of the statistics) / MET (frontier convention) | no | stage 1 | no |
 | Bootstrap quantile rule (nearest rank) and CPI-95 substitution values −1 / +1 | yes | **MAT** (the bounds of the difference of two quantities in [0, 1]) | no | stage 1 | no |
 | Trivial classifiers of a score-based family (cutoffs at the smallest observed score and +∞) | yes | **MAT** (definition of a threshold family) | no | stage 1 | no |
@@ -768,10 +800,10 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 1. Pilot (3–5 burned events): pipeline, audit, timing, B5 eligibility, bracketing of FPR_w = 10% by every grid-based baseline.
 2. **Stage-1 freeze** (tag `ep002-stage1`): configuration, constants, grid, rules, selection rule, baseline set, O1 specification, B5 model record and template, N_dev, N_max, frontier-subset rule, masking rule; planning run of Algorithm P per grid column.
 3. Generate the **dev** split; ledger; mechanical checks (C1–C3, C12, C14–C16).
-4. Calibrate the **baselines** on dev (B5 prompt variants up to K = 10, thresholds, B4-tuned grid) and **freeze them** (tag `ep002-baselines`). If the dev split is regenerated (§5.6), the baselines are recalibrated from scratch under the same budget on the new dev, and only the baselines frozen afterwards are used.
+4. Calibrate the **baselines** on dev (B5 prompt variants up to K = 10, thresholds, B4-tuned grid), write the three B5 paraphrases and re-fit their thresholds on dev (§8.7), **designate R\*** (§8.7) and **freeze them** (tag `ep002-baselines`). If the dev split is regenerated (§5.6), the baselines are recalibrated from scratch under the same budget on the new dev, and only the baselines frozen afterwards are used.
 5. Validate dev: C6, C7, C11 (using the frozen baselines only); at most one regeneration (§5.6).
 6. Explore candidates on dev, at most K = 10 variants, all logged.
-7. **Freeze** (tag `ep002-freeze`): primary candidate, thresholds, R*, prompt paraphrases; compute **N_test** by Algorithm P with the dev-estimated quantities of §10.3 (stage 2).
+7. **Freeze** (tag `ep002-freeze`): primary candidate, thresholds, prompt paraphrases of the candidate, if it is LLM-based (the B5 paraphrases and R* were already frozen at step 4); compute **N_test** by Algorithm P with the dev-estimated quantities of §10.3 (stage 2).
 8. Generate the **test** split with the frozen configuration and new seeds; mechanical checks only.
 9. Evaluate **once**; produce the report, with the frontier control reported separately.
 
@@ -798,7 +830,9 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 
 **Closed in v0.7 (the review of v0.6):** the two false "if and only if" statements on the endpoints of CPI-95 were replaced by sufficient conditions (§8.4); score invariance across bootstrap replicates and the fixed/variable split were made explicit (§8.2.1, §8.4); Algorithm P is qualified as conditional operating power (§10.1); the pilot bracketing check is declared a pre-flight feasibility check (§10.8); λ for P and R* in S-d and K3 is stated formula by formula (§8.2.1); the recheck of Proposition 1 found and closed a saturation case (§8.2.1). Algorithm P, N_test, the target 0.80, S-b to S-d, K1 to K3 and the other approved elements are **not** changed.
 
-**Items for the final review** (introduced in v0.3 to v0.7; none changes a threshold):
+**Closed in v0.8 (the review of v0.7):** K4 was withdrawn because it was not the demonstrated opposite of any success criterion (§9.2); K5 was formalized as a quantifier over formulation instances (§9.2, §9.8); the four prompt formulations were formalized as instances in which a formulation changes the candidate and B5 together, with R* a baseline identity designated once on dev under formulation 0 at the baseline freeze (§8.7); a global decision rule with SUCCESS_j, KILL_j, CONTRADICTORY_j and INCONCLUSIVE_j was written (§9.8); the S-d and K3 clauses for undefined comparisons were completed (§9.7). Proposition 1, CPI-95, score invariance, Algorithm P (apart from the relabelling of the formulation index) and the other approved elements are **not** changed.
+
+**Items for the final review** (introduced in v0.3 to v0.8; none changes a threshold):
 1. Kill criteria operationalized as UB(Δ) < 0.20, each kill being the demonstrated opposite of a success criterion (§9.2).
 2. INCONCLUSIVE-UNDERPOWERED applies whatever the observed statistics (§9.4).
 3. C11 (headroom) failure ends the experiment without regeneration (§5.6).
@@ -816,11 +850,26 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 16. **Pilot bracketing check:** the grid of B4-tuned may be corrected before the stage-1 freeze, using the burned pilot events, so that it brackets FPR_w = 10% (§10.8). This is the only point at which the grid may change, and the check is a pre-flight feasibility check, not a guarantee for the test.
 17. **Saturation case (v0.7).** Rechecking Proposition 1 on the edge cases showed that a point with recall 1 and FPR_w < 0.10 dominates the all-positive point and removes it from the frontier, so that v0.6 would have reported such a method as unreachable. Case 3 of the rule (R_10 = 1) and the corresponding statement of Proposition 1 were added; no threshold, no principle and no criterion changed (§8.2.1).
 18. **Algorithm P gives conditional operating power**, not the unconditional power of the full decision procedure (§10.1).
+19. **K4 withdrawn** (v0.8). The number is not reused, so K5–K8 keep their numbers (§9.2).
+20. **Contradictory evidence** (SUCCESS_j and KILL_j for the same j, possible only through an inconsistency of the bootstrap intervals) is INCONCLUSIVE, unless a clean KILL is demonstrated in another formulation (§9.8).
+21. **R\*** is designated at the baseline freeze (step 4) and no longer at the candidate freeze, so that it cannot depend on the candidate (§8.7, §15).
+22. **Algorithm P is conservative** for statistic types that do not depend on the formulation (§10.4); its standard deviations are the maxima over X (or k) and over the formulation instances (§10.4).
+23. **B5 paraphrases are written at the baseline freeze**, before any candidate is explored, and those of the candidate at the candidate freeze (§8.7, §15), so that no paraphrase of the baseline can be shaped by candidate results.
+24. **K8** now states that a C11 failure is immediate, consistently with §5.6 (§9.2).
 13. The randomization is a device for defining an achievable **expected** operating point; no random draw is made in evaluation, and the **frozen deployable thresholds are unchanged** (§7.1).
 
 ---
 
 ## Changelog
+
+**0.8 (2026-10-03)** — specification text only; no code, no dataset, no benchmark run. Corrects only the decision logic identified in the review of v0.7.
+1. **K4 withdrawn (§9.2).** The AUC criterion with "the interval includes 0.5" was not the demonstrated opposite of a success criterion, and would not have fired on a systematically reversed ordering. The hard-negative decision stays with S-d and K3. The number K4 is not reused.
+2. **K5 formalized (§9.2, §9.8).** K5 is the quantifier "for at least one formulation" over K1–K3; the ambiguous "K1–K4 are met under any of the four formulations" is removed.
+3. **Prompt formulations formalized (§8.7).** j ∈ {0, 1, 2, 3}; a formulation instance consists of the candidate and B5 under the same formulation, plus the formulation-independent baselines; nothing mixes formulations; common bootstrap resamples; paraphrases written once at the freeze and all used.
+4. **R\* (§8.7, §15).** A baseline identity designated once on dev under formulation 0 at the baseline freeze, with a fixed tie-break order; R*_j is its instance in formulation j (R*_j = B5_j if R* = B5-score); not re-selected per formulation.
+5. **Global decision rule (§9.8).** SUCCESS_j, KILL_j, CONTRADICTORY_j, INCONCLUSIVE_j and an ordered rule: K6–K8, underpowered, a clean KILL in one formulation, contradiction, SUCCESS only if every formulation passes, otherwise INCONCLUSIVE.
+6. **Found during the audit and corrected (no threshold or principle changed):** (a) the B5 paraphrases are written at the baseline freeze and the candidate's at the candidate freeze (§8.7, §15); (b) K8 stated a regeneration for C11 that §5.6 forbids and now says a C11 failure is immediate (§9.2); (c) the standard deviations of Algorithm P are maxima over X and over formulation instances (§10.4); (d) J counts B5-score only when it is available (§8.7, §9.8).
+7. **Consistency edits.** S-d and K3 clauses in §9.7.1; S-b to S-e wording (§9.1); §9.2 heading and the opposites it names; §9.3; C11 under formulation 0 (§7.4); B5 tuning on formulation 0 (§7.3); Algorithm P: formulation index relabelled to {0, 1, 2, 3}, remark that it is conservative for formulation-independent statistics, K4 reference removed (§10.4, §10.5); constants register.
 
 **0.7 (2026-10-03)** — specification text only; no code, no dataset, no benchmark run. Closes the review of v0.6; nothing else is changed.
 1. **CPI-95 (§8.4).** The definition is unchanged. The two "if and only if" statements about LB\* = −1 and UB\* = +1 were mathematically false (a defined replicate can itself take the value −1 or +1) and are replaced by sufficient conditions.
