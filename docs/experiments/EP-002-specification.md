@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.9, ready for the owner's freeze decision. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Status | **FROZEN — v0.9, approved by the project owner on 2026-10-03. The content is identical to commit `b8f00e9` except for this status line. No rule may be changed because of results; any later change is a new, openly versioned amendment.** |
 | Version | 0.9 (2026-10-03) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
