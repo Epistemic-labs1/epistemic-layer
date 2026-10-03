@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | **DRAFT — v0.8 written for final review. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
-| Version | 0.8 (2026-10-03) — see Changelog at the end |
+| Status | **DRAFT — v0.9, ready for the owner's freeze decision. NOT frozen. No implementation, no dataset, no benchmark run until the specification is explicitly approved and frozen.** |
+| Version | 0.9 (2026-10-03) — see Changelog at the end |
 | Supersedes | EP-001 (Evidence Independence Baseline) as the active experiment |
 | Process | HYPOTHESIS → PRIOR ART → **SPECIFICATION** → REVIEW → EXPERIMENT → RESULTS → KILL / CONTINUE |
 
@@ -236,7 +236,7 @@ A pair is excluded (logged and counted) if generation failed, refused or produce
 
 **Generation ledger** (versioned): attempt number, seed, generation-code version, configuration hash, discarded datasets and the reason for each discard.
 
-**No opportunistic regeneration.** At most **one** regeneration of the dev split is allowed, and only for a failure of a pre-registered validity check (C1–C3, C6, C7, C12, C14, C15) — never for the performance of any method on the test split. A second failure ends the experiment (K8). C11 (headroom) failure does **not** permit regeneration: making the dataset more fact-identifiable would be tuning towards the hypothesis; it ends the experiment.
+**No opportunistic regeneration.** At most **one** regeneration of the dev split is allowed, and only for a failure of a pre-registered validity check (C1–C3, C6, C7, C12, C14, C15) — never for the performance of any method on the test split. A second failure ends the experiment as an invalid test (K8, outcome INCONCLUSIVE). C11 (headroom) failure does **not** permit regeneration: making the dataset more fact-identifiable would be tuning towards the hypothesis; it ends the experiment.
 
 **Pre-registered knobs** (the only parameters a regeneration may change; the change applies to all subsequent events, dev and test):
 1. On a C7 (difficulty floor) failure: use the second, pre-written, stronger-rewording prompt template for D/E (template R2), and/or lower the summary length bound from 30% to 15%.
@@ -492,6 +492,8 @@ Within S the truth is the partition of §3.3 with 5 origin blocks per event. Rep
 
 **Which methods depend on j.** B5-score, whenever it is available (it is LLM-based), and the primary candidate if it is LLM-based. B1, B2, B3, B4-tuned and a non-LLM candidate are identical in every formulation. J = {0, 1, 2, 3} if the candidate or an available B5-score is LLM-based, otherwise J = {0}.
 
+**Definition of "LLM-based".** A method is **LLM-based** if the output of **any** of its components depends on a natural-language prompt given to a language model. The freeze record of the candidate (§15, step 7) and the baseline freeze record of B5 (§15, step 4) list **every** such component and its prompt(s). The paraphrases of this subsection apply to the instruction sentence of **every** listed prompt, and in instance j all of the paraphrases j of all listed prompts are substituted together. A component that uses a language model without a natural-language prompt (for example the embedding model of B3) is not LLM-based under this definition. The classification is recorded at the freeze and cannot be changed afterwards.
+
 **Formulation instance.** For each j ∈ J the instance j consists of P_j (the candidate under formulation j, or P itself if it is not LLM-based), B5_j (B5-score under formulation j) and the formulation-independent baselines. Thresholds are re-fitted on dev, mechanically, for each LLM-based method and each j and frozen. **Every criterion of §9 is evaluated within one instance and never mixes formulations: P_j is compared with B5_j, never with B5_j′.** The four instances are not four runs of the candidate: a formulation changes the candidate **and** B5 together.
 
 **The reference baseline R\*.** R* is a baseline **identity**, not an instance. It is designated **once**, at the baseline freeze (§15, step 4), on dev and under formulation 0: the baseline of 𝔅 (as available) with the highest dev R_10, ties broken by the order B1, B2, B3, B4-tuned, B5-score. It does not depend on the candidate, on any test result or on any formulation other than 0, and it is **not re-selected per formulation**. In instance j the reference is R*_j = R* if R* is formulation-independent, and R*_j = B5_j if R* = B5-score. R*_j is used by S-d and by K3 in instance j.
@@ -521,15 +523,15 @@ S-b, S-c and S-d are evaluated **within a formulation instance j** (§8.7); the 
 - **S-f Cost.** Measured on a fixed random sample of 200 dev pairs: ≤ 2 seconds per pair on a single consumer machine, **or** ≤ USD 0.01 per pair through an API.
 
 ### 9.2 KILL — any one is sufficient
-K1–K3 are evaluated within each formulation instance (§8.7) and K1–K5 apply only when N_test meets the power rule (§10); K6–K8 do not depend on power. Each kill criterion is the demonstrated opposite of a success criterion (K1 and K2 of S-b, K3 of S-c and S-d, K6 of S-f, K7 and K8 of S-a), so that an uncertain result is inconclusive rather than a kill.
+K1–K3 are evaluated within each formulation instance (§8.7) and K1–K5 apply only when N_test meets the power rule (§10); K6 does not depend on power. Each kill criterion is the demonstrated opposite of a success criterion (K1 and K2 of S-b, K3 of S-c and S-d, K6 of S-f), so that an uncertain result is inconclusive rather than a kill. **K7 and K8 are not kill criteria: they are invalid-test stop rules whose outcome is INCONCLUSIVE (invalid test).** A KILL always means that the capability tested fails a pre-defined criterion; INCONCLUSIVE means that the test does not allow a reliable decision, which includes an invalid test.
 - **K1 No margin over a similarity baseline.** For some X ∈ {B1, B2, B3, B4-tuned}: Δ̂_X is defined and UB\*(Δ_X) < 0.20.
 - **K2 A prompt is enough.** For B5-score: Δ̂_B5 is defined and UB\*(Δ_B5) < 0.20. (The local-model caveat of §14 applies.)
 - **K3 False positives.** FPR_w(P) at its frozen threshold has an ordinary 95% percentile lower endpoint > 0.15, or for some k the LB\* of FPR_k(P) − FPR_k(R*) is > +0.05.
 - **K4 — withdrawn in v0.8 (the number is not reused).** The v0.7 criterion declared a kill when the bootstrap interval of an AUC included 0.5. That is not the demonstrated opposite of any success criterion: an interval including 0.5 means uncertainty and not a demonstrated inability to separate, and an AUC significantly below 0.5 would not have fired it. The scientific decision about the hard negatives is carried by S-d (success) and K3 (kill). Nothing replaces K4.
 - **K5 Fragility (quantifier over formulations).** K1, K2 and K3 are evaluated in each instance j ∈ J. If **at least one** of K1_j, K2_j, K3_j is demonstrated for **at least one** j ∈ J, the kill is declared. K5 is the clause "for at least one j"; it is not a further condition. The precise rule is §9.8.
 - **K6 Cost.** The cost bounds of S-f cannot be met.
-- **K7 Ground truth.** Ground truth cannot be produced reliably (§5.6 exclusion limits exceeded twice).
-- **K8 Dataset validity.** The dataset fails C6 or C7 and cannot be fixed within the one allowed regeneration and the time box, or fails C11 (which permits no regeneration, §5.6).
+- **K7 Ground truth (invalid-test stop; outcome INCONCLUSIVE).** Ground truth cannot be produced reliably (§5.6 exclusion limits exceeded twice).
+- **K8 Dataset validity (invalid-test stop; outcome INCONCLUSIVE).** The dataset fails C6 or C7 and cannot be fixed within the one allowed regeneration and the time box, or fails C11 (which permits no regeneration, §5.6). A C11 that is not evaluable (§9.7.3) has the same outcome: INCONCLUSIVE (invalid test).
 
 Removed or merged relative to v0.2: the v0.2 criteria "B4 or another open-source system performs within the CI" and "B5 performs within the CI" are now K1 and K2; "within the CI" is operationalized as UB(Δ) < 0.20. See the Changelog.
 
@@ -537,7 +539,7 @@ Removed or merged relative to v0.2: the v0.2 criteria "B4 or another open-source
 The decision rule of §9.8 yields neither SUCCESS nor KILL within the time box (§15): reported as inconclusive with the reason. No criterion is relaxed, replaced or re-weighted after any result is seen.
 
 ### 9.4 INCONCLUSIVE-UNDERPOWERED
-If the algorithm of §10.5 returns no N_test within the operational limit, the outcome is labelled INCONCLUSIVE-UNDERPOWERED **whatever the observed statistics are**. Descriptive results may be reported, cannot authorise EP-003, and cannot trigger K1–K5. Criteria K6–K8 do not depend on power and remain in force. **No criterion is modified.**
+If the algorithm of §10.5 returns no N_test within the operational limit, the outcome is labelled INCONCLUSIVE-UNDERPOWERED **whatever the observed statistics are**. Descriptive results may be reported, cannot authorise EP-003, and cannot trigger K1–K5. K6 and the invalid-test stops K7 and K8 do not depend on power and remain in force. **No criterion is modified.**
 
 ### 9.5 What cannot change an outcome
 The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagnostics (D5), the secondary candidates, the secondary analysis at frozen thresholds, the sensitivity analyses of ER-B4 (§13.4) and every diagnostic of §6.
@@ -548,7 +550,7 @@ The frontier control (§7.6), the unique-detail masking (D4), the ancestry diagn
 ### 9.7 If a method has no reachable 10% operating point
 1. **On the full test sample.** If R_10 is undefined for P or for some X ∈ 𝔅, then Δ̂_X is undefined (and, if P or R* is the method without a reachable point, the FPR differences of S-d are undefined too): S-b and S-d are **not met**, the comparison is reported as NO REACHABLE 10% OPERATING POINT with no recall assigned, and K1, K2 and the FPR-difference clause of K3 **cannot fire** for that X. The outcome is then at best INCONCLUSIVE unless another kill criterion applies.
 2. **In a bootstrap replicate.** A replicate in which P or X has no reachable point is **undefined** and is handled **only** by the conservative partial-identification bootstrap interval CPI-95 of §8.4: the value −1 for the lower endpoint, the value +1 for the upper endpoint, no replicate dropped, no value imputed in a favourable direction. The fraction u of undefined replicates is reported. Consistency with the criteria: S-b (LB\*), K1 and K2 (UB\*), S-d (UB\*) and the FPR-difference clause of K3 (LB\*) all use the endpoint that counts an undefined replicate **against** the conclusion being tested, so undefined replicates penalize SUCCESS and penalize KILL; if u is large enough the endpoint is −1 or +1 and the corresponding criterion cannot be met.
-3. **On dev — conservative and symmetric.** Only a grid-based family can lack a reachable point (§8.2.1). A baseline of 𝔅 with no reachable 10% point on dev is **unavailable at the operating point**. It is **not excluded** from the gates, because excluding the strongest baseline would lower the maximum over baselines and make C7 and C11 easier to pass. Instead the gates that use the maximum over baselines — **C6, C7 and C11 — are NOT EVALUABLE and are treated as not passed (INCONCLUSIVE)**; the freeze cannot proceed and the experiment stops with the outcome INCONCLUSIVE (baseline unavailable at the operating point on dev). No grid, setting or baseline is changed after the stage-1 freeze to cure this. The rule is symmetric: a **candidate variant** with no reachable point on dev is **ineligible** for selection. No method can gain by being unreachable. The preventive measure is the pre-flight feasibility check of the pilot (§10.8), which is not a guarantee.
+3. **On dev — conservative and symmetric.** Only a grid-based family can lack a reachable point (§8.2.1). A baseline of 𝔅 with no reachable 10% point on dev is **unavailable at the operating point**. It is **not excluded** from the gates, because excluding the strongest baseline would lower the maximum over baselines and make C7 and C11 easier to pass. Instead the gates that use the maximum over baselines — **C6, C7 and C11 — are NOT EVALUABLE and are treated as not passed (INCONCLUSIVE)**; the freeze cannot proceed and the experiment stops with the outcome INCONCLUSIVE (invalid test: baseline unavailable at the operating point on dev), the same outcome as a failed C6, C7 or C11 (K8). No grid, setting or baseline is changed after the stage-1 freeze to cure this. The rule is symmetric: a **candidate variant** with no reachable point on dev is **ineligible** for selection. No method can gain by being unreachable. The preventive measure is the pre-flight feasibility check of the pilot (§10.8), which is not a guarantee.
 
 ### 9.8 Global decision rule over the formulation instances
 Let J ⊆ {0, 1, 2, 3} be the set of formulation instances of §8.7 (J = {0} if neither P nor an available B5-score is LLM-based). For each j ∈ J, using the instance of §8.7 (P_j, B5_j, R*_j, the formulation-independent baselines, 𝔅 as available, §9.6):
@@ -558,10 +560,11 @@ Let J ⊆ {0, 1, 2, 3} be the set of formulation instances of §8.7 (J = {0} if 
 - **CONTRADICTORY_j** ⇔ SUCCESS_j ∧ KILL_j (possible only through an inconsistency of the bootstrap intervals).
 - **INCONCLUSIVE_j** ⇔ ¬SUCCESS_j ∧ ¬KILL_j.
 
-Formulation-independent quantities: A = S-a (C1–C16 passed); F = S-f (cost); KILL_ind = K6 ∨ K7 ∨ K8.
+Formulation-independent quantities: A = S-a (C1–C16 passed); F = S-f (cost); KILL_ind = K6; INVALID = K7 ∨ K8 ∨ (C6, C7 or C11 not evaluable, §9.7.3).
 
 **The outcome is the first of the following that applies, in this order:**
-1. **KILL_ind** (K6, K7 or K8) → **KILL**. These do not depend on power.
+1. **KILL_ind** (K6) → **KILL**. It does not depend on power.
+1b. **INVALID** (K7, K8, or C6/C7/C11 not evaluable) → **INCONCLUSIVE (invalid test)**. It does not depend on power. If K6 and INVALID both hold, the outcome is KILL by K6, because the cost failure is measured independently of the dataset validity.
 2. N_test = NONE (§10.5) → **INCONCLUSIVE-UNDERPOWERED** (§9.4): K1–K5 are disabled and SUCCESS is impossible.
 3. For at least one j ∈ J, KILL_j ∧ ¬SUCCESS_j → **KILL** (K5: a failure demonstrated in **one** formulation is enough).
 4. For at least one j ∈ J, CONTRADICTORY_j → **INCONCLUSIVE** (contradictory evidence; the case is reported).
@@ -637,7 +640,7 @@ STEP 5  (reporting, not a gate) at N = N_test, or at N_cap if N_test = NONE, rep
 OUTPUT  N_test (or NONE) and the reporting table. With the same inputs and seed the output
         is bit-for-bit reproducible.
 ```
-Criteria S-a, S-e (it enters through J), S-f and K5–K8 are not simulated beyond what J implies: validity checks are assumed to pass and cost is deterministic (declared).
+Criteria S-a, S-e (it enters through J), S-f and K5–K8 (K7 and K8 being invalid-test stops) are not simulated beyond what J implies: validity checks are assumed to pass and cost is deterministic (declared).
 
 ### 10.6 Sensitivity grid (planning at stage 1; not binding)
 The values below are **arbitrary assumptions about unknowns** — EP-001 provides no estimate of between-event variance — and are declared as such. At stage 1 Algorithm P is run once per column, with the column's values replacing the dev estimates, to record the planned N_test per column and to flag whether the conservative column exceeds N_cap. The columns are a sensitivity analysis, not a choice of the most convenient N. The binding run (stage 2) uses §10.3–10.5.
@@ -832,7 +835,9 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 
 **Closed in v0.8 (the review of v0.7):** K4 was withdrawn because it was not the demonstrated opposite of any success criterion (§9.2); K5 was formalized as a quantifier over formulation instances (§9.2, §9.8); the four prompt formulations were formalized as instances in which a formulation changes the candidate and B5 together, with R* a baseline identity designated once on dev under formulation 0 at the baseline freeze (§8.7); a global decision rule with SUCCESS_j, KILL_j, CONTRADICTORY_j and INCONCLUSIVE_j was written (§9.8); the S-d and K3 clauses for undefined comparisons were completed (§9.7). Proposition 1, CPI-95, score invariance, Algorithm P (apart from the relabelling of the formulation index) and the other approved elements are **not** changed.
 
-**Items for the final review** (introduced in v0.3 to v0.8; none changes a threshold):
+**Closed in v0.9 (the final logical audit of v0.8, decided by the project owner):** "LLM-based" is now defined, with the paraphrase scope covering every prompted component (§8.7); K7 and K8 (and C11 failed or not evaluable) are no longer kills but invalid-test stops with outcome INCONCLUSIVE, so that KILL always means that the tested capability fails a pre-defined criterion (§9.2, §9.8). No threshold, criterion, metric or invariant changed.
+
+**Items for the final review** (introduced in v0.3 to v0.9; none changes a threshold):
 1. Kill criteria operationalized as UB(Δ) < 0.20, each kill being the demonstrated opposite of a success criterion (§9.2).
 2. INCONCLUSIVE-UNDERPOWERED applies whatever the observed statistics (§9.4).
 3. C11 (headroom) failure ends the experiment without regeneration (§5.6).
@@ -861,6 +866,10 @@ B4-faithful and B4-core have a single operating point and cannot enter the equal
 ---
 
 ## Changelog
+
+**0.9 (2026-10-03)** — specification text only; no code, no dataset, no benchmark run. Two changes after the final logical audit of v0.8; nothing else is changed.
+1. **Definition of "LLM-based" (§8.7).** A method is LLM-based if any component's output depends on a natural-language prompt given to a language model; every such component and prompt is listed in the freeze record and paraphrased, and the classification cannot change after the freeze. This closes the path by which a candidate could reach SUCCESS without robustness over all its prompted components.
+2. **K7 and K8 reclassified (§9.2, §9.8, §9.4, §9.7.3, §5.6).** They are invalid-test stop rules with outcome INCONCLUSIVE (invalid test), not kills; a failed or not evaluable C11 has the same outcome. K6 (cost) stays a kill. §9.8 gets a step 1b. The decision was taken by the project owner on the recommendation of the audit.
 
 **0.8 (2026-10-03)** — specification text only; no code, no dataset, no benchmark run. Corrects only the decision logic identified in the review of v0.7.
 1. **K4 withdrawn (§9.2).** The AUC criterion with "the interval includes 0.5" was not the demonstrated opposite of a success criterion, and would not have fired on a systematically reversed ordering. The hard-negative decision stays with S-d and K3. The number K4 is not reused.
